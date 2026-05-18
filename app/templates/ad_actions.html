@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+  <h1>广告动作清单</h1>
+  <p class="muted">基于 Search Term Report 自动生成。第一版规则偏保守，后续可按你的目标 ACOS 和毛利调整。</p>
+</section>
+
+<section class="panel">
+  <table>
+    <thead>
+      <tr>
+        <th>优先级</th>
+        <th>搜索词</th>
+        <th>动作</th>
+        <th>数据</th>
+        <th>原因</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in actions %}
+      <tr>
+        <td><span class="badge decision">{{ item.priority }}</span></td>
+        <td>
+          <strong>{{ item.search_term }}</strong><br>
+          <span class="muted">{{ item.campaign }}</span>
+        </td>
+        <td>{{ item.action }}</td>
+        <td>
+          点击 {{ "%.0f"|format(item.clicks) }}<br>
+          花费 ${{ "%.2f"|format(item.spend) }}<br>
+          销售 ${{ "%.2f"|format(item.sales) }}<br>
+          订单 {{ "%.0f"|format(item.orders) }}<br>
+          ACOS {{ "%.1f%%"|format((item.acos or 0) * 100) }}
+        </td>
+        <td>{{ item.reason }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5">暂无动作。请先上传 Search Term Report。</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

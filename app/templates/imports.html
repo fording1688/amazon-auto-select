@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+  <h1>报表上传</h1>
+  <p class="muted">先支持 Business Report、Search Term Report、Advertised Product Report、成本表、Listing 表。CSV/XLSX 都可以。</p>
+  <form class="inline-form" method="post" action="/imports" enctype="multipart/form-data">
+    <select name="report_type">
+      {% for value, label in report_types.items() %}
+      <option value="{{ value }}">{{ label }}</option>
+      {% endfor %}
+    </select>
+    <input type="file" name="file" accept=".csv,.tsv,.xlsx,.xlsm" required>
+    <button type="submit">上传并分析</button>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>建议上传顺序</h2>
+  <ol>
+    <li>成本表：用于计算真实利润。</li>
+    <li>Business Report：用于看销售、Session、转化。</li>
+    <li>Advertised Product Report：用于按 SKU 计算广告花费。</li>
+    <li>Search Term Report：用于生成广告动作清单。</li>
+    <li>Listing 表：用于基础体检。</li>
+  </ol>
+</section>
+
+<section class="panel">
+  <h2>最近导入</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>类型</th>
+        <th>文件</th>
+        <th>行数</th>
+        <th>状态</th>
+        <th>错误</th>
+        <th>时间</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for batch in batches %}
+      <tr>
+        <td>{{ batch.id }}</td>
+        <td>{{ report_types.get(batch.report_type, batch.report_type) }}</td>
+        <td>{{ batch.file_name }}</td>
+        <td>{{ batch.row_count }}</td>
+        <td><span class="badge {{ batch.status }}">{{ batch.status }}</span></td>
+        <td>{{ batch.error_message or "" }}</td>
+        <td>{{ batch.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

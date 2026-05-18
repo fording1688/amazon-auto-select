@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+  <h1>SKU 利润看板</h1>
+  <div class="metrics">
+    <span>SKU {{ totals.sku_count }}</span>
+    <span>销售额 ${{ "%.2f"|format(totals.sales) }}</span>
+    <span>广告花费 ${{ "%.2f"|format(totals.ad_spend) }}</span>
+    <span>预估利润 ${{ "%.2f"|format(totals.profit) }}</span>
+    <span>TACOS {{ "%.1f%%"|format((totals.tacos or 0) * 100) }}</span>
+    <span>利润率 {{ "%.1f%%"|format((totals.margin or 0) * 100) }}</span>
+  </div>
+</section>
+
+<section class="panel">
+  <table>
+    <thead>
+      <tr>
+        <th>SKU / ASIN</th>
+        <th>销售</th>
+        <th>广告</th>
+        <th>利润</th>
+        <th>标签</th>
+        <th>建议</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>
+          <strong>{{ row.sku }}</strong><br>
+          <span class="muted">{{ row.asin }}</span><br>
+          <span>{{ row.title[:90] }}</span>
+        </td>
+        <td>
+          销售额 ${{ "%.2f"|format(row.sales) }}<br>
+          订单/件数 {{ "%.0f"|format(row.units) }}<br>
+          Sessions {{ "%.0f"|format(row.sessions) }}<br>
+          CVR {{ "%.1f%%"|format((row.conversion_rate or 0) * 100) }}
+        </td>
+        <td>
+          花费 ${{ "%.2f"|format(row.ad_spend) }}<br>
+          广告销售 ${{ "%.2f"|format(row.ad_sales) }}<br>
+          ACOS {{ "%.1f%%"|format((row.acos or 0) * 100) }}<br>
+          TACOS {{ "%.1f%%"|format((row.tacos or 0) * 100) }}
+        </td>
+        <td>
+          单件成本 ${{ "%.2f"|format(row.unit_cost) }}<br>
+          预估利润 ${{ "%.2f"|format(row.estimated_profit) }}<br>
+          利润率 {{ "%.1f%%"|format((row.margin or 0) * 100) }}
+        </td>
+        <td>
+          <div class="tag-cloud">
+            {% for tag in row.tags %}<span>{{ tag }}</span>{% endfor %}
+          </div>
+        </td>
+        <td>
+          <ul>{% for rec in row.recommendations %}<li>{{ rec }}</li>{% endfor %}</ul>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

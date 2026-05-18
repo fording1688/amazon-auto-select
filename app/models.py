@@ -105,3 +105,109 @@ class KeywordResearchRun(Base):
     raw_titles_json: Mapped[Optional[str]] = mapped_column(Text)
     error_message: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
+class ImportBatch(Base):
+    __tablename__ = "import_batches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    report_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    row_count: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(30), default="success", index=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
+class BusinessMetric(Base):
+    __tablename__ = "business_metrics"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("import_batches.id"), nullable=False, index=True)
+    sku: Mapped[Optional[str]] = mapped_column(String(120), index=True)
+    asin: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    title: Mapped[Optional[str]] = mapped_column(Text)
+    sessions: Mapped[Optional[float]] = mapped_column(Float)
+    page_views: Mapped[Optional[float]] = mapped_column(Float)
+    units_ordered: Mapped[Optional[float]] = mapped_column(Float)
+    ordered_sales: Mapped[Optional[float]] = mapped_column(Float)
+    conversion_rate: Mapped[Optional[float]] = mapped_column(Float)
+    buy_box_percentage: Mapped[Optional[float]] = mapped_column(Float)
+    raw_json: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
+class SearchTermMetric(Base):
+    __tablename__ = "search_term_metrics"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("import_batches.id"), nullable=False, index=True)
+    campaign_name: Mapped[Optional[str]] = mapped_column(String(255), index=True)
+    ad_group_name: Mapped[Optional[str]] = mapped_column(String(255))
+    targeting: Mapped[Optional[str]] = mapped_column(Text)
+    search_term: Mapped[Optional[str]] = mapped_column(Text, index=True)
+    impressions: Mapped[Optional[float]] = mapped_column(Float)
+    clicks: Mapped[Optional[float]] = mapped_column(Float)
+    spend: Mapped[Optional[float]] = mapped_column(Float)
+    sales: Mapped[Optional[float]] = mapped_column(Float)
+    orders: Mapped[Optional[float]] = mapped_column(Float)
+    acos: Mapped[Optional[float]] = mapped_column(Float)
+    raw_json: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
+class AdvertisedProductMetric(Base):
+    __tablename__ = "advertised_product_metrics"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("import_batches.id"), nullable=False, index=True)
+    sku: Mapped[Optional[str]] = mapped_column(String(120), index=True)
+    asin: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    campaign_name: Mapped[Optional[str]] = mapped_column(String(255), index=True)
+    impressions: Mapped[Optional[float]] = mapped_column(Float)
+    clicks: Mapped[Optional[float]] = mapped_column(Float)
+    spend: Mapped[Optional[float]] = mapped_column(Float)
+    sales: Mapped[Optional[float]] = mapped_column(Float)
+    orders: Mapped[Optional[float]] = mapped_column(Float)
+    acos: Mapped[Optional[float]] = mapped_column(Float)
+    raw_json: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
+class CostItem(Base):
+    __tablename__ = "cost_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("import_batches.id"), nullable=False, index=True)
+    sku: Mapped[Optional[str]] = mapped_column(String(120), index=True)
+    asin: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    product_name: Mapped[Optional[str]] = mapped_column(Text)
+    purchase_cost: Mapped[Optional[float]] = mapped_column(Float)
+    first_leg_shipping: Mapped[Optional[float]] = mapped_column(Float)
+    packaging_cost: Mapped[Optional[float]] = mapped_column(Float)
+    fba_fee: Mapped[Optional[float]] = mapped_column(Float)
+    referral_fee_rate: Mapped[Optional[float]] = mapped_column(Float)
+    other_cost: Mapped[Optional[float]] = mapped_column(Float)
+    target_margin: Mapped[Optional[float]] = mapped_column(Float)
+    raw_json: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
+class ListingItem(Base):
+    __tablename__ = "listing_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("import_batches.id"), nullable=False, index=True)
+    sku: Mapped[Optional[str]] = mapped_column(String(120), index=True)
+    asin: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    title: Mapped[Optional[str]] = mapped_column(Text)
+    bullet_1: Mapped[Optional[str]] = mapped_column(Text)
+    bullet_2: Mapped[Optional[str]] = mapped_column(Text)
+    bullet_3: Mapped[Optional[str]] = mapped_column(Text)
+    bullet_4: Mapped[Optional[str]] = mapped_column(Text)
+    bullet_5: Mapped[Optional[str]] = mapped_column(Text)
+    price: Mapped[Optional[float]] = mapped_column(Float)
+    coupon: Mapped[Optional[str]] = mapped_column(String(120))
+    main_image_url: Mapped[Optional[str]] = mapped_column(Text)
+    raw_json: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
