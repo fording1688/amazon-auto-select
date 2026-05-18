@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+  <h1>省钱版测款清单</h1>
+  <p class="muted">只基于 Amazon 真实结果筛选：价格、评论、耗材/替换件、多件装机会、风险词。1688 和供应链只作为后续人工参考，不影响这里的 Amazon 机会判断。</p>
+  <div class="metrics">
+    <span>建议每次只选 3-5 个 SKU</span>
+    <span>FBM 首批 20-50 套</span>
+    <span>广告 $5-$10/天</span>
+    <span>14 天看点击、加购、转化、退货咨询</span>
+  </div>
+</section>
+
+<section class="grid-list">
+  {% for item in candidates %}
+  <article class="product-card shortlist-card">
+    <img src="{{ item.product.image_url or 'https://dummyimage.com/180x180/f2f4f7/1f2937.png&text=No+Image' }}" alt="">
+    <div class="product-body">
+      <div class="score">{{ item.test_score }}</div>
+      <h2><a href="/reports/product/{{ item.product.id }}">{{ item.product.title }}</a></h2>
+      <p class="muted">{{ item.product.keyword.keyword }} · {{ item.product.asin }} · {{ item.product.brand or "-" }}</p>
+      <div class="metrics">
+        <span>${{ "%.2f"|format(item.product.price or 0) }}</span>
+        <span>评分 {{ item.product.rating or "-" }}</span>
+        <span>评论 {{ item.product.review_count or 0 }}</span>
+        <span>机会分 {{ item.report.opportunity_score }}</span>
+        <span class="badge decision">{{ item.report.decision }}</span>
+      </div>
+      <div class="opportunity-strip">
+        <strong>{{ item.pack_signal.label }}</strong>
+        <span>建议：{{ item.suggested_pack }}</span>
+        <span>测款价：{{ item.suggested_price }}</span>
+      </div>
+      <ul>
+        {% for reason in item.quick_reasons %}
+        <li>{{ reason }}</li>
+        {% endfor %}
+      </ul>
+      <p><strong>下一步：</strong>{{ item.action }}</p>
+      <p><strong>找货关键词：</strong>{{ item.sourcing_keywords | join(" / ") }}</p>
+      <a class="button" target="_blank" href="{{ item.product.product_url }}">打开 Amazon</a>
+    </div>
+  </article>
+  {% else %}
+  <div class="empty">暂无测款候选。请先用 SerpApi 运行一次真实 Amazon 任务，或增加 replacement / compatible / pack 类关键词。</div>
+  {% endfor %}
+</section>
+{% endblock %}

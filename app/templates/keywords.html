@@ -19,6 +19,25 @@
 </section>
 
 <section class="panel">
+  <h2>省钱版关键词扩展</h2>
+  <p class="muted">输入一个基础词，系统自动扩展 replacement、compatible、3-pack、5-pack、10-pack、repair kit 等测款词。</p>
+  <form class="inline-form" method="post" action="/keywords/expand">
+    <input name="base_keyword" placeholder="例如 glass cutter wheel" required>
+    <input name="category" placeholder="category" value="五金工具">
+    <select name="priority">
+      <option value="高">高</option>
+      <option value="中" selected>中</option>
+      <option value="低">低</option>
+    </select>
+    <select name="status">
+      <option value="active" selected>active</option>
+      <option value="inactive">inactive</option>
+    </select>
+    <button type="submit">扩展并加入关键词库</button>
+  </form>
+</section>
+
+<section class="panel">
   <table>
     <thead>
       <tr>

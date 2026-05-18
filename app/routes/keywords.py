@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Keyword
+from app.opportunity import expand_keyword
 
 
 router = APIRouter(prefix="/keywords", tags=["keywords"])
@@ -30,6 +31,23 @@ def create_keyword(
     if not exists:
         db.add(Keyword(keyword=keyword.strip(), category=category, priority=priority, status=status))
         db.commit()
+    return RedirectResponse("/keywords", status_code=303)
+
+
+@router.post("/expand")
+def expand_keywords(
+    base_keyword: str = Form(...),
+    category: str = Form("五金工具"),
+    priority: str = Form("中"),
+    status: str = Form("active"),
+    db: Session = Depends(get_db),
+):
+    existing = {row[0] for row in db.execute(select(Keyword.keyword)).all()}
+    for keyword in expand_keyword(base_keyword):
+        if keyword not in existing:
+            db.add(Keyword(keyword=keyword, category=category, priority=priority, status=status))
+            existing.add(keyword)
+    db.commit()
     return RedirectResponse("/keywords", status_code=303)
 
 
