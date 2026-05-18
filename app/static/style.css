@@ -200,6 +200,14 @@ td {
   color: #667085;
 }
 
+.notice {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 6px;
+  color: #9a3412;
+  padding: 10px 12px;
+}
+
 .empty {
   background: #fff;
   border: 1px dashed #cbd5e1;

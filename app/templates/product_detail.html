@@ -14,7 +14,12 @@
       <span class="score inline">{{ report.opportunity_score }}</span>
     </div>
     <p>{{ report.summary }}</p>
+    {% if is_mock %}
+    <p class="notice">当前是 Mock 测试数据，ASIN 不是真实 Amazon ASIN。按钮会打开对应关键词搜索页。</p>
+    <a class="button" target="_blank" href="{{ amazon_search_url }}">打开 Amazon 搜索</a>
+    {% else %}
     <a class="button" target="_blank" href="{{ product.product_url }}">打开 Amazon 页面</a>
+    {% endif %}
   </div>
 </section>
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.templating import Jinja2Templates
@@ -51,7 +52,16 @@ def product_detail(product_id: int, request: Request, db: Session = Depends(get_
         "negative": loads(report.negative_keywords_json, []),
         "fbm": loads(report.fbm_test_plan_json, {}),
     }
+    is_mock = product.asin.startswith("B0MOCK")
+    amazon_search_url = f"https://www.amazon.com/s?k={quote_plus(product.keyword.keyword if product.keyword else product.title)}"
     return templates.TemplateResponse(
         "product_detail.html",
-        {"request": request, "product": product, "report": report, "parsed": parsed},
+        {
+            "request": request,
+            "product": product,
+            "report": report,
+            "parsed": parsed,
+            "is_mock": is_mock,
+            "amazon_search_url": amazon_search_url,
+        },
     )

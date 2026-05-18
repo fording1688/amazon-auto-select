@@ -48,6 +48,8 @@ OPENAI_MODEL=gpt-4o-mini
 
 没有 `OPENAI_API_KEY` 时，系统会使用本地规则生成兜底 JSON 报告，保证流程能完整跑通。配置 `FEISHU_WEBHOOK_URL` 后，任务结束会推送 Top 5 产品。
 
+如果要使用 SerpApi 真实 Amazon 搜索数据，把 `AMAZON_API_PROVIDER` 改为 `serpapi`，并设置 `SERPAPI_KEY` 或兼容旧脚本的 `SERPAPI_API_KEY`。
+
 ## 页面
 
 - `/keywords`：关键词管理，支持新增、启用/停用、删除。
