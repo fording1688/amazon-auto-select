@@ -226,6 +226,46 @@ td {
   padding-left: 20px;
 }
 
+.checkbox-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.checkbox-list label {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.checkbox-list input {
+  min-height: auto;
+}
+
+.tag-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag-cloud span {
+  background: #eef4ff;
+  border: 1px solid #c7d7fe;
+  border-radius: 999px;
+  color: #3538cd;
+  display: inline-flex;
+  font-size: 13px;
+  padding: 6px 10px;
+}
+
+.muted-tags span {
+  background: #f2f4f7;
+  border-color: #d0d5dd;
+  color: #475467;
+}
+
 .empty {
   background: #fff;
   border: 1px dashed #cbd5e1;

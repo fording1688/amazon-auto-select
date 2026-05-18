@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+  <h1>关键词研究</h1>
+  <p class="muted">输入一个主关键词，系统会扩展 replacement / compatible / pack / kit 等长尾词，并从 Amazon 真实标题里反挖产品词和广告词。</p>
+  <form class="inline-form" method="post" action="/research">
+    <input name="seed_keyword" placeholder="例如 diamond burr bits 或 glass grinder bit" required>
+    <button type="submit">开始研究</button>
+  </form>
+</section>
+
+{% if run %}
+<section class="panel">
+  <h2>{{ run.seed_keyword }} · {{ run.status }}</h2>
+  {% if run.error_message %}
+  <p class="notice">{{ run.error_message }}</p>
+  {% endif %}
+  <p class="muted">创建时间：{{ run.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</p>
+</section>
+
+<section class="columns">
+  <div class="panel">
+    <h2>建议加入关键词库</h2>
+    <form method="post" action="/research/{{ run.id }}/add-keywords">
+      <div class="checkbox-list">
+        {% for kw in expanded_keywords %}
+        <label><input type="checkbox" name="selected_keywords" value="{{ kw }}" checked> {{ kw }}</label>
+        {% endfor %}
+      </div>
+      <div class="inline-form">
+        <input name="category" value="五金工具">
+        <select name="priority">
+          <option value="高">高</option>
+          <option value="中" selected>中</option>
+          <option value="低">低</option>
+        </select>
+        <select name="status">
+          <option value="active" selected>active</option>
+          <option value="inactive">inactive</option>
+        </select>
+        <button type="submit">加入关键词库</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h2>产品词/衍生词</h2>
+    <div class="tag-cloud">
+      {% for term in product_terms %}
+      <span>{{ term }}</span>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="columns">
+  <div class="panel">
+    <h2>广告关键词建议</h2>
+    <div class="tag-cloud">
+      {% for term in ad_keywords %}
+      <span>{{ term }}</span>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="panel">
+    <h2>否定关键词建议</h2>
+    <div class="tag-cloud muted-tags">
+      {% for term in negative_keywords %}
+      <span>{{ term }}</span>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>高频修饰词</h2>
+  <div class="tag-cloud">
+    {% for term in modifier_terms %}
+    <span>{{ term }}</span>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel">
+  <h2>参考标题</h2>
+  <ul>
+    {% for title in raw_titles[:30] %}
+    <li>{{ title }}</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>历史研究</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>主关键词</th>
+        <th>状态</th>
+        <th>创建时间</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in runs %}
+      <tr>
+        <td><a href="/research/{{ item.id }}">{{ item.id }}</a></td>
+        <td>{{ item.seed_keyword }}</td>
+        <td><span class="badge {{ item.status }}">{{ item.status }}</span></td>
+        <td>{{ item.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

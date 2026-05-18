@@ -89,3 +89,19 @@ class TaskRun(Base):
     total_products: Mapped[int] = mapped_column(Integer, default=0)
     total_analyzed: Mapped[int] = mapped_column(Integer, default=0)
     error_message: Mapped[Optional[str]] = mapped_column(Text)
+
+
+class KeywordResearchRun(Base):
+    __tablename__ = "keyword_research_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    seed_keyword: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(30), default="success", index=True)
+    expanded_keywords_json: Mapped[Optional[str]] = mapped_column(Text)
+    product_terms_json: Mapped[Optional[str]] = mapped_column(Text)
+    modifier_terms_json: Mapped[Optional[str]] = mapped_column(Text)
+    ad_keywords_json: Mapped[Optional[str]] = mapped_column(Text)
+    negative_keywords_json: Mapped[Optional[str]] = mapped_column(Text)
+    raw_titles_json: Mapped[Optional[str]] = mapped_column(Text)
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
