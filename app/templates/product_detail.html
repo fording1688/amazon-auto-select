@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="detail-header">
+  <img src="{{ product.image_url }}" alt="">
+  <div>
+    <h1>{{ product.title }}</h1>
+    <p class="muted">{{ product.keyword.keyword }} · {{ product.asin }} · {{ product.brand or "-" }}</p>
+    <div class="metrics">
+      <span>${{ "%.2f"|format(product.price or 0) }}</span>
+      <span>评分 {{ product.rating or "-" }}</span>
+      <span>评论 {{ product.review_count or 0 }}</span>
+      <span>BSR {{ product.bsr or "-" }}</span>
+      <span class="badge decision">{{ report.decision }}</span>
+      <span class="score inline">{{ report.opportunity_score }}</span>
+    </div>
+    <p>{{ report.summary }}</p>
+    <a class="button" target="_blank" href="{{ product.product_url }}">打开 Amazon 页面</a>
+  </div>
+</section>
+
+<section class="columns">
+  <div class="panel">
+    <h2>推荐理由</h2>
+    <ul>{% for item in parsed.reasons %}<li>{{ item }}</li>{% endfor %}</ul>
+    <h2>风险点</h2>
+    <ul>{% for item in parsed.risks %}<li>{{ item }}</li>{% endfor %}</ul>
+  </div>
+  <div class="panel">
+    <h2>组合包策略</h2>
+    <p>适合组合装：{{ "是" if parsed.bundle.suitable_for_bundle else "否" }}</p>
+    <p>推荐组合：{{ parsed.bundle.recommended_packs }}</p>
+    <p>{{ parsed.bundle.reason }}</p>
+    <h2>建议售价</h2>
+    <pre>{{ parsed.pricing | tojson(indent=2) }}</pre>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Listing 建议</h2>
+  <h3>{{ parsed.listing.title }}</h3>
+  <ul>{% for item in parsed.listing.bullet_points or [] %}<li>{{ item }}</li>{% endfor %}</ul>
+  <p>{{ parsed.listing.description }}</p>
+</section>
+
+<section class="columns">
+  <div class="panel">
+    <h2>图片卖点</h2>
+    <ul>{% for item in parsed.images %}<li>{{ item }}</li>{% endfor %}</ul>
+  </div>
+  <div class="panel">
+    <h2>广告关键词</h2>
+    <p>{{ parsed.ads }}</p>
+    <h2>否定关键词</h2>
+    <p>{{ parsed.negative }}</p>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>14 天 FBM 测款计划</h2>
+  <pre>{{ parsed.fbm | tojson(indent=2) }}</pre>
+  <h2>下一步操作</h2>
+  <p>{{ report.next_action }}</p>
+</section>
+{% endblock %}

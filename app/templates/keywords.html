@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+  <h1>关键词管理</h1>
+  <form class="inline-form" method="post" action="/keywords">
+    <input name="keyword" placeholder="keyword" required>
+    <input name="category" placeholder="category" value="五金工具">
+    <select name="priority">
+      <option value="高">高</option>
+      <option value="中" selected>中</option>
+      <option value="低">低</option>
+    </select>
+    <select name="status">
+      <option value="active" selected>active</option>
+      <option value="inactive">inactive</option>
+    </select>
+    <button type="submit">新增</button>
+  </form>
+</section>
+
+<section class="panel">
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>关键词</th>
+        <th>分类</th>
+        <th>优先级</th>
+        <th>状态</th>
+        <th>更新时间</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in keywords %}
+      <tr>
+        <td>{{ item.id }}</td>
+        <td>{{ item.keyword }}</td>
+        <td>{{ item.category }}</td>
+        <td>{{ item.priority }}</td>
+        <td><span class="badge {{ item.status }}">{{ item.status }}</span></td>
+        <td>{{ item.updated_at.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td class="actions">
+          <form method="post" action="/keywords/{{ item.id }}/status">
+            <input type="hidden" name="status" value="{{ 'inactive' if item.status == 'active' else 'active' }}">
+            <button type="submit">{{ '停用' if item.status == 'active' else '启用' }}</button>
+          </form>
+          <form method="post" action="/keywords/{{ item.id }}/delete">
+            <button class="danger" type="submit">删除</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

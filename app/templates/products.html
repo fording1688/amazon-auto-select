@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+  <h1>产品分析列表</h1>
+  <form class="inline-form" method="get" action="/products">
+    <select name="keyword_id">
+      <option value="">全部关键词</option>
+      {% for kw in keywords %}
+      <option value="{{ kw.id }}" {% if keyword_id == kw.id %}selected{% endif %}>{{ kw.keyword }}</option>
+      {% endfor %}
+    </select>
+    <select name="decision">
+      <option value="">全部决策</option>
+      {% for d in decisions %}
+      <option value="{{ d }}" {% if decision == d %}selected{% endif %}>{{ d }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">筛选</button>
+    <a class="button ghost" href="/tasks">立即运行任务</a>
+  </form>
+</section>
+
+<section class="grid-list">
+  {% for product, report in rows %}
+  <article class="product-card">
+    <img src="{{ product.image_url or 'https://dummyimage.com/180x180/f2f4f7/1f2937.png&text=No+Image' }}" alt="">
+    <div class="product-body">
+      <div class="score">{{ report.opportunity_score }}</div>
+      <h2><a href="/reports/product/{{ product.id }}">{{ product.title }}</a></h2>
+      <p class="muted">{{ product.keyword.keyword }} · {{ product.asin }} · {{ product.brand or "-" }}</p>
+      <div class="metrics">
+        <span>${{ "%.2f"|format(product.price or 0) }}</span>
+        <span>评分 {{ product.rating or "-" }}</span>
+        <span>评论 {{ product.review_count or 0 }}</span>
+        <span class="badge decision">{{ report.decision }}</span>
+      </div>
+      <p>{{ report.summary or "" }}</p>
+    </div>
+  </article>
+  {% else %}
+  <div class="empty">暂无分析结果，请先到“手动任务”运行一次。</div>
+  {% endfor %}
+</section>
+{% endblock %}

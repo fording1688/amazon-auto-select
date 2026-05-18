@@ -1,0 +1,23 @@
+from functools import lru_cache
+from typing import Optional
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    openai_api_key: Optional[str] = None
+    amazon_api_provider: str = "mock"
+    serpapi_key: Optional[str] = None
+    rainforest_api_key: Optional[str] = None
+    keepa_api_key: Optional[str] = None
+    feishu_webhook_url: Optional[str] = None
+    database_url: str = "sqlite:///./amazon_test.db"
+    daily_run_hour: int = 8
+    openai_model: str = "gpt-4o-mini"
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
