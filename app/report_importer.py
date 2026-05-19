@@ -4,8 +4,11 @@ import csv
 import io
 import json
 import re
+import shutil
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from openpyxl import load_workbook
@@ -29,6 +32,11 @@ REPORT_TYPES = {
     "costs": "成本表",
     "listings": "Listing 基础信息表",
 }
+
+REPORT_INBOX = Path("amazon_reports/inbox")
+REPORT_IMPORTED = Path("amazon_reports/imported")
+REPORT_FAILED = Path("amazon_reports/failed")
+SUPPORTED_EXTENSIONS = {".csv", ".tsv", ".xlsx", ".xlsm"}
 
 
 ALIASES = {
@@ -181,6 +189,78 @@ def import_report(db: Session, report_type: str, file_name: str, content: bytes)
     db.commit()
     db.refresh(batch)
     return batch
+
+
+def ensure_report_dirs() -> None:
+    for path in (REPORT_INBOX, REPORT_IMPORTED, REPORT_FAILED):
+        path.mkdir(parents=True, exist_ok=True)
+
+
+def infer_report_type(file_name: str, rows: list[dict]) -> str:
+    name = file_name.lower()
+    headers = set(normalize_header(header) for header in (rows[0].keys() if rows else []))
+    if any(term in name for term in ["search_term", "search-term", "searchterm", "搜索词"]):
+        return "search_terms"
+    if any(term in name for term in ["advertised_product", "advertised-product", "ad_products", "广告商品"]):
+        return "advertised_products"
+    if any(term in name for term in ["cost", "成本"]):
+        return "costs"
+    if any(term in name for term in ["listing", "listings", "链接", "listing表"]):
+        return "listings"
+    if any(term in name for term in ["business", "sales_traffic", "sales-and-traffic", "业务"]):
+        return "business"
+
+    if normalize_header("Customer Search Term") in headers or normalize_header("客户搜索词") in headers:
+        return "search_terms"
+    if normalize_header("Advertised SKU") in headers or normalize_header("Advertised ASIN") in headers:
+        return "advertised_products"
+    if normalize_header("purchase_cost") in headers or normalize_header("采购成本") in headers:
+        return "costs"
+    if normalize_header("bullet_1") in headers or normalize_header("bullet point 1") in headers:
+        return "listings"
+    if normalize_header("Ordered Product Sales") in headers or normalize_header("已订购商品销售额") in headers:
+        return "business"
+    raise ValueError("无法自动识别报表类型，请在网页手动选择类型上传。")
+
+
+def scan_inbox(db: Session) -> list[dict]:
+    ensure_report_dirs()
+    results = []
+    for path in sorted(REPORT_INBOX.iterdir()):
+        if not path.is_file() or path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+            continue
+        timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        try:
+            content = path.read_bytes()
+            rows = parse_tabular_file(path.name, content)
+            report_type = infer_report_type(path.name, rows)
+            batch = import_report(db, report_type, path.name, content)
+            destination = REPORT_IMPORTED / f"{path.stem}-{timestamp}{path.suffix}"
+            shutil.move(str(path), destination)
+            results.append(
+                {
+                    "file_name": path.name,
+                    "report_type": report_type,
+                    "status": batch.status,
+                    "row_count": batch.row_count,
+                    "error_message": batch.error_message,
+                    "destination": str(destination),
+                }
+            )
+        except Exception as exc:
+            destination = REPORT_FAILED / f"{path.stem}-{timestamp}{path.suffix}"
+            shutil.move(str(path), destination)
+            results.append(
+                {
+                    "file_name": path.name,
+                    "report_type": "",
+                    "status": "failed",
+                    "row_count": 0,
+                    "error_message": str(exc),
+                    "destination": str(destination),
+                }
+            )
+    return results
 
 
 def _insert_row(db: Session, batch_id: int, report_type: str, row: dict, alias: dict[str, str]) -> None:

@@ -12,6 +12,10 @@
     <input type="file" name="file" accept=".csv,.tsv,.xlsx,.xlsm" required>
     <button type="submit">上传并分析</button>
   </form>
+  <form class="inline-form" method="post" action="/imports/scan-inbox">
+    <button type="submit">扫描 amazon_reports/inbox 文件夹</button>
+    <span class="muted">把 CSV/XLSX 丢进这个文件夹后点这里，系统会自动识别、导入并归档。</span>
+  </form>
   <div class="metrics">
     <a class="button ghost" href="/operations/business-overview">查看业务总览</a>
     <a class="button ghost" href="/operations/dashboard">查看 SKU 利润看板</a>
@@ -19,6 +23,36 @@
     <a class="button ghost" href="/operations/listing-audit">查看 Listing 体检</a>
   </div>
 </section>
+
+{% if scan_results %}
+<section class="panel">
+  <h2>本次自动导入结果</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>文件</th>
+        <th>识别类型</th>
+        <th>行数</th>
+        <th>状态</th>
+        <th>错误</th>
+        <th>归档位置</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in scan_results %}
+      <tr>
+        <td>{{ item.file_name }}</td>
+        <td>{{ report_types.get(item.report_type, item.report_type) }}</td>
+        <td>{{ item.row_count }}</td>
+        <td><span class="badge {{ item.status }}">{{ item.status }}</span></td>
+        <td>{{ item.error_message or "" }}</td>
+        <td>{{ item.destination }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
 
 <section class="panel">
   <h2>建议上传顺序</h2>
@@ -29,6 +63,14 @@
     <li>Search Term Report：用于生成广告动作清单。</li>
     <li>Listing 表：用于基础体检。</li>
   </ol>
+</section>
+
+<section class="panel">
+  <h2>本地自动导入文件夹</h2>
+  <pre>amazon_reports/inbox/      放待导入报表
+amazon_reports/imported/   成功导入后自动归档
+amazon_reports/failed/     识别或导入失败后归档</pre>
+  <p class="muted">文件名建议包含 business、search_term、advertised_product、cost、listing 之一，识别会更稳。</p>
 </section>
 
 <section class="panel">

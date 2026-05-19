@@ -6,6 +6,7 @@ from fastapi.templating import Jinja2Templates
 from app.database import SessionLocal, init_db
 from app.routes import keywords, operations, products, reports, research, tasks
 from app.scheduler import start_scheduler, stop_scheduler
+from app.report_importer import ensure_report_dirs
 from app.tasks import seed_keywords
 
 
@@ -24,6 +25,7 @@ app.include_router(tasks.router)
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
+    ensure_report_dirs()
     db = SessionLocal()
     try:
         seed_keywords(db)

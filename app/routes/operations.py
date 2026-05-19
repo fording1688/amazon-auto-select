@@ -14,6 +14,7 @@ from app.report_importer import (
     build_sku_dashboard,
     import_report,
     latest_batches,
+    scan_inbox,
 )
 
 
@@ -25,7 +26,7 @@ templates = Jinja2Templates(directory="app/templates")
 def imports_page(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(
         "imports.html",
-        {"request": request, "report_types": REPORT_TYPES, "batches": latest_batches(db)},
+        {"request": request, "report_types": REPORT_TYPES, "batches": latest_batches(db), "scan_results": []},
     )
 
 
@@ -38,6 +39,15 @@ async def upload_report(
     content = await file.read()
     import_report(db, report_type, file.filename or "uploaded_file", content)
     return RedirectResponse("/imports", status_code=303)
+
+
+@router.post("/imports/scan-inbox")
+def scan_report_inbox(request: Request, db: Session = Depends(get_db)):
+    results = scan_inbox(db)
+    return templates.TemplateResponse(
+        "imports.html",
+        {"request": request, "report_types": REPORT_TYPES, "batches": latest_batches(db), "scan_results": results},
+    )
 
 
 @router.get("/operations/dashboard")
