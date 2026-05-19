@@ -93,6 +93,25 @@
 {% endif %}
 
 <section class="panel">
+  <h2>建议数据周期</h2>
+  <div class="period-grid">
+    <div>
+      <strong>日常运营</strong>
+      <p>每周固定上传最近 30 天报告，用来做广告动作、利润检查和 Listing 体检。</p>
+    </div>
+    <div>
+      <strong>新品/测款</strong>
+      <p>前 14 天可以每 3-4 天上传一次，重点看点击、转化、花费和搜索词。</p>
+    </div>
+    <div>
+      <strong>月度复盘</strong>
+      <p>每月上传上一个完整自然月，适合判断 SKU 去留、涨价、降本、补货和多件装机会。</p>
+    </div>
+  </div>
+  <p class="muted">建议同一轮上传的 Business、广告、Bulk、库存报告使用同一个时间范围。不要今天传 7 天广告、明天传 30 天业务，否则指标会混在一起，结论容易偏。</p>
+</section>
+
+<section class="panel">
   <h2>建议上传顺序</h2>
   <ol>
     <li>成本表：用于计算真实利润。</li>
@@ -117,7 +136,10 @@ amazon_reports/failed/     识别或导入失败后归档</pre>
 </section>
 
 <section class="panel">
-  <h2>最近导入</h2>
+  <div class="section-heading">
+    <h2>最近导入</h2>
+    <span class="muted">共 {{ batch_pagination.total }} 条，每页 {{ batch_pagination.per_page }} 条</span>
+  </div>
   <table>
     <thead>
       <tr>
@@ -144,5 +166,18 @@ amazon_reports/failed/     识别或导入失败后归档</pre>
       {% endfor %}
     </tbody>
   </table>
+  <div class="pagination">
+    {% if batch_pagination.has_prev %}
+    <a class="button ghost" href="/imports?page={{ batch_pagination.prev_page }}">上一页</a>
+    {% else %}
+    <span class="button ghost disabled">上一页</span>
+    {% endif %}
+    <span>第 {{ batch_pagination.page }} / {{ batch_pagination.total_pages }} 页</span>
+    {% if batch_pagination.has_next %}
+    <a class="button ghost" href="/imports?page={{ batch_pagination.next_page }}">下一页</a>
+    {% else %}
+    <span class="button ghost disabled">下一页</span>
+    {% endif %}
+  </div>
 </section>
 {% endblock %}

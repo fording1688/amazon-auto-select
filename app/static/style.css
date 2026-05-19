@@ -254,6 +254,44 @@ td {
   padding: 4px 8px;
 }
 
+.period-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin: 10px 0;
+}
+
+.period-grid div {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.period-grid p {
+  color: #667085;
+  margin-bottom: 0;
+}
+
+.section-heading,
+.pagination {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.pagination {
+  justify-content: center;
+  margin-top: 14px;
+}
+
+.button.disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .opportunity-strip {
   align-items: center;
   background: #ecfdf3;

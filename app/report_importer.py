@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from openpyxl import load_workbook
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -525,8 +525,16 @@ def _insert_row(db: Session, batch_id: int, report_type: str, row: dict, alias: 
         )
 
 
-def latest_batches(db: Session) -> list[ImportBatch]:
-    return db.execute(select(ImportBatch).order_by(desc(ImportBatch.created_at)).limit(30)).scalars().all()
+def latest_batches(db: Session, limit: int = 10, offset: int = 0) -> list[ImportBatch]:
+    return (
+        db.execute(select(ImportBatch).order_by(desc(ImportBatch.created_at)).offset(offset).limit(limit))
+        .scalars()
+        .all()
+    )
+
+
+def count_batches(db: Session) -> int:
+    return db.execute(select(func.count(ImportBatch.id))).scalar_one()
 
 
 def build_sku_dashboard(db: Session) -> list[SkuSummary]:

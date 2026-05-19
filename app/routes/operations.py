@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -11,6 +11,7 @@ from app.report_importer import (
     build_business_overview,
     build_listing_audits,
     build_sku_dashboard,
+    count_batches,
     import_report,
     latest_batches,
     REPORT_INBOX,
@@ -32,11 +33,24 @@ def _pending_inbox_files() -> list[str]:
     ]
 
 
-def _imports_context(request: Request, db: Session, **extra):
+def _imports_context(request: Request, db: Session, page: int = 1, per_page: int = 10, **extra):
+    total_batches = count_batches(db)
+    total_pages = max((total_batches + per_page - 1) // per_page, 1)
+    page = min(max(page, 1), total_pages)
     context = {
         "request": request,
         "report_types": REPORT_TYPES,
-        "batches": latest_batches(db),
+        "batches": latest_batches(db, limit=per_page, offset=(page - 1) * per_page),
+        "batch_pagination": {
+            "page": page,
+            "per_page": per_page,
+            "total": total_batches,
+            "total_pages": total_pages,
+            "has_prev": page > 1,
+            "has_next": page < total_pages,
+            "prev_page": page - 1,
+            "next_page": page + 1,
+        },
         "scan_results": None,
         "scan_summary": None,
         "upload_result": None,
@@ -48,8 +62,12 @@ def _imports_context(request: Request, db: Session, **extra):
 
 
 @router.get("/imports")
-def imports_page(request: Request, db: Session = Depends(get_db)):
-    return templates.TemplateResponse("imports.html", _imports_context(request, db))
+def imports_page(
+    request: Request,
+    page: int = Query(1, ge=1),
+    db: Session = Depends(get_db),
+):
+    return templates.TemplateResponse("imports.html", _imports_context(request, db, page=page))
 
 
 @router.post("/imports")
