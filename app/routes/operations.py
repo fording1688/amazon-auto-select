@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
-from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -14,6 +13,8 @@ from app.report_importer import (
     build_sku_dashboard,
     import_report,
     latest_batches,
+    REPORT_INBOX,
+    SUPPORTED_EXTENSIONS,
     scan_inbox,
 )
 
@@ -22,31 +23,75 @@ router = APIRouter(tags=["operations"])
 templates = Jinja2Templates(directory="app/templates")
 
 
+def _pending_inbox_files() -> list[str]:
+    REPORT_INBOX.mkdir(parents=True, exist_ok=True)
+    return [
+        path.name
+        for path in sorted(REPORT_INBOX.iterdir())
+        if path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS
+    ]
+
+
+def _imports_context(request: Request, db: Session, **extra):
+    context = {
+        "request": request,
+        "report_types": REPORT_TYPES,
+        "batches": latest_batches(db),
+        "scan_results": None,
+        "scan_summary": None,
+        "upload_result": None,
+        "pending_files": _pending_inbox_files(),
+        "inbox_path": str(REPORT_INBOX.resolve()),
+    }
+    context.update(extra)
+    return context
+
+
 @router.get("/imports")
 def imports_page(request: Request, db: Session = Depends(get_db)):
-    return templates.TemplateResponse(
-        "imports.html",
-        {"request": request, "report_types": REPORT_TYPES, "batches": latest_batches(db), "scan_results": []},
-    )
+    return templates.TemplateResponse("imports.html", _imports_context(request, db))
 
 
 @router.post("/imports")
 async def upload_report(
+    request: Request,
     report_type: str = Form(...),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
     content = await file.read()
-    import_report(db, report_type, file.filename or "uploaded_file", content)
-    return RedirectResponse("/imports", status_code=303)
+    batch = import_report(db, report_type, file.filename or "uploaded_file", content)
+    return templates.TemplateResponse(
+        "imports.html",
+        _imports_context(
+            request,
+            db,
+            upload_result={
+                "file_name": batch.file_name,
+                "report_type": batch.report_type,
+                "status": batch.status,
+                "row_count": batch.row_count,
+                "error_message": batch.error_message,
+            },
+        ),
+    )
 
 
 @router.post("/imports/scan-inbox")
 def scan_report_inbox(request: Request, db: Session = Depends(get_db)):
+    before_files = _pending_inbox_files()
     results = scan_inbox(db)
+    success_count = sum(1 for item in results if item["status"] == "success")
+    failed_count = sum(1 for item in results if item["status"] == "failed")
+    summary = {
+        "before_count": len(before_files),
+        "processed_count": len(results),
+        "success_count": success_count,
+        "failed_count": failed_count,
+    }
     return templates.TemplateResponse(
         "imports.html",
-        {"request": request, "report_types": REPORT_TYPES, "batches": latest_batches(db), "scan_results": results},
+        _imports_context(request, db, scan_results=results, scan_summary=summary),
     )
 
 
