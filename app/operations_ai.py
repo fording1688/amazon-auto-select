@@ -3,11 +3,11 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from openai import OpenAI
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.llm_client import get_openai_client
 from app.models import ImportBatch, OperationsAiReport
 from app.report_importer import (
     build_ad_actions,
@@ -281,7 +281,7 @@ def generate_operations_ai_report(db: Session) -> OperationsAiReport:
 
     prompt = OPERATIONS_USER_PROMPT.format(context_json=json.dumps(context, ensure_ascii=False, indent=2, default=str))
     try:
-        client = OpenAI(api_key=settings.openai_api_key)
+        client = get_openai_client()
         response = client.chat.completions.create(
             model=settings.openai_model,
             messages=[

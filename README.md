@@ -36,6 +36,9 @@ http://127.0.0.1:8000
 
 ```env
 OPENAI_API_KEY=
+OPENAI_BASE_URL=
+OPENROUTER_HTTP_REFERER=
+OPENROUTER_APP_NAME=amazon-auto-select
 AMAZON_API_PROVIDER=mock
 SERPAPI_KEY=
 RAINFOREST_API_KEY=
@@ -47,6 +50,8 @@ OPENAI_MODEL=gpt-4o-mini
 ```
 
 没有 `OPENAI_API_KEY` 时，系统会使用本地规则生成兜底 JSON 报告，保证流程能完整跑通。配置 `FEISHU_WEBHOOK_URL` 后，任务结束会推送 Top 5 产品。
+
+如果使用 OpenRouter，把 `OPENAI_BASE_URL` 设置为 `https://openrouter.ai/api/v1`，`OPENAI_MODEL` 使用 OpenRouter 模型名，例如 `openai/gpt-4o-mini`。
 
 如果要使用 SerpApi 真实 Amazon 搜索数据，把 `AMAZON_API_PROVIDER` 改为 `serpapi`，并设置 `SERPAPI_KEY` 或兼容旧脚本的 `SERPAPI_API_KEY`。
 

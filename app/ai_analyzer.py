@@ -3,9 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from openai import OpenAI
-
 from app.config import get_settings
+from app.llm_client import get_openai_client
 from app.prompts import ANALYSIS_PROMPT_TEMPLATE, SYSTEM_PROMPT
 from app.scoring import classify_decision
 
@@ -75,7 +74,7 @@ def analyze_product(product: dict, score_result: dict) -> dict[str, Any]:
         score_json=json.dumps(score_result, ensure_ascii=False, indent=2),
     )
     try:
-        client = OpenAI(api_key=settings.openai_api_key)
+        client = get_openai_client()
         response = client.chat.completions.create(
             model=settings.openai_model,
             messages=[

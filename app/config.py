@@ -6,6 +6,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     openai_api_key: Optional[str] = None
+    openai_base_url: Optional[str] = None
+    openrouter_http_referer: Optional[str] = None
+    openrouter_app_name: str = "amazon-auto-select"
     amazon_api_provider: str = "mock"
     serpapi_key: Optional[str] = None
     rainforest_api_key: Optional[str] = None
