@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+  <h1>业务总览</h1>
+  {% if batch %}
+  <p class="muted">来源：{{ batch.file_name }} · {{ batch.row_count }} 行 · {{ batch.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</p>
+  <div class="metrics">
+    <span>统计天数 {{ summary.day_count }}</span>
+    <span>销售额 ${{ "%.2f"|format(summary.total_sales) }}</span>
+    <span>日均 ${{ "%.2f"|format(summary.avg_daily_sales) }}</span>
+    <span>订单 {{ "%.0f"|format(summary.total_orders) }}</span>
+    <span>件数 {{ "%.0f"|format(summary.total_units) }}</span>
+    <span>Sessions {{ "%.0f"|format(summary.total_sessions) }}</span>
+    <span>转化率 {{ "%.2f%%"|format(summary.conversion_rate * 100) }}</span>
+    <span>平均售价 ${{ "%.2f"|format(summary.average_price) }}</span>
+    <span>客单价 ${{ "%.2f"|format(summary.average_order_value) }}</span>
+    <span>B2B 占比 {{ "%.1f%%"|format(summary.b2b_ratio * 100) }}</span>
+  </div>
+  {% else %}
+  <div class="empty">暂无 Business Report。请先上传业务报告。</div>
+  {% endif %}
+</section>
+
+{% if batch %}
+<section class="columns">
+  <div class="panel">
+    <h2>系统判断</h2>
+    <ul>
+      {% for item in insights %}
+      <li>{{ item }}</li>
+      {% endfor %}
+    </ul>
+    <h2>趋势</h2>
+    <p>前半段日均：${{ "%.2f"|format(summary.first_half_avg_sales) }}</p>
+    <p>后半段日均：${{ "%.2f"|format(summary.second_half_avg_sales) }}</p>
+    <p>变化：{{ "%.1f%%"|format(summary.sales_trend * 100) }}</p>
+  </div>
+
+  <div class="panel">
+    <h2>下一步需要补充</h2>
+    <ul>
+      <li>上传成本表，才能算真实利润。</li>
+      <li>上传 Advertised Product Report，才能按 SKU 看广告拖累或放量机会。</li>
+      <li>上传 Search Term Report，才能生成否定词和 exact 加词动作。</li>
+      <li>如果你要产品级分析，请导出按 SKU/ASIN 维度的 Detail Page Sales and Traffic 报告。</li>
+    </ul>
+  </div>
+</section>
+
+<section class="columns">
+  <div class="panel">
+    <h2>销售最高的 5 天</h2>
+    <table>
+      <thead><tr><th>日期</th><th>销售额</th><th>订单</th><th>转化率</th><th>平均售价</th></tr></thead>
+      <tbody>
+        {% for row in top_days %}
+        <tr>
+          <td>{{ row.date }}</td>
+          <td>${{ "%.2f"|format(row.sales) }}</td>
+          <td>{{ "%.0f"|format(row.orders) }}</td>
+          <td>{{ "%.1f%%"|format((row.conversion_rate or 0) * 100) }}</td>
+          <td>${{ "%.2f"|format(row.average_price) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h2>销售最低的 5 天</h2>
+    <table>
+      <thead><tr><th>日期</th><th>销售额</th><th>订单</th><th>转化率</th><th>平均售价</th></tr></thead>
+      <tbody>
+        {% for row in low_days %}
+        <tr>
+          <td>{{ row.date }}</td>
+          <td>${{ "%.2f"|format(row.sales) }}</td>
+          <td>{{ "%.0f"|format(row.orders) }}</td>
+          <td>{{ "%.1f%%"|format((row.conversion_rate or 0) * 100) }}</td>
+          <td>${{ "%.2f"|format(row.average_price) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>按日明细</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>日期</th>
+        <th>销售额</th>
+        <th>B2B 销售</th>
+        <th>件数</th>
+        <th>订单</th>
+        <th>Sessions</th>
+        <th>转化率</th>
+        <th>平均售价</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>{{ row.date }}</td>
+        <td>${{ "%.2f"|format(row.sales) }}</td>
+        <td>${{ "%.2f"|format(row.b2b_sales) }}</td>
+        <td>{{ "%.0f"|format(row.units) }}</td>
+        <td>{{ "%.0f"|format(row.orders) }}</td>
+        <td>{{ "%.0f"|format(row.sessions) }}</td>
+        <td>{{ "%.1f%%"|format((row.conversion_rate or 0) * 100) }}</td>
+        <td>${{ "%.2f"|format(row.average_price) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+{% endblock %}

@@ -9,6 +9,7 @@ from app.database import get_db
 from app.report_importer import (
     REPORT_TYPES,
     build_ad_actions,
+    build_business_overview,
     build_listing_audits,
     build_sku_dashboard,
     import_report,
@@ -51,6 +52,11 @@ def sku_dashboard(request: Request, db: Session = Depends(get_db)):
     totals["tacos"] = totals["ad_spend"] / totals["sales"] if totals["sales"] else None
     totals["margin"] = totals["profit"] / totals["sales"] if totals["sales"] else None
     return templates.TemplateResponse("sku_dashboard.html", {"request": request, "rows": rows, "totals": totals})
+
+
+@router.get("/operations/business-overview")
+def business_overview(request: Request, db: Session = Depends(get_db)):
+    return templates.TemplateResponse("business_overview.html", {"request": request, **build_business_overview(db)})
 
 
 @router.get("/operations/ad-actions")

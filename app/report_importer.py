@@ -39,6 +39,7 @@ ALIASES = {
     "page_views": ["page views", "pageviews", "page views total"],
     "units_ordered": ["units ordered", "unitsordered", "ordered units", "units"],
     "ordered_sales": ["ordered product sales", "orderedproductsales", "sales", "ordered revenue"],
+    "date": ["date", "日期"],
     "conversion_rate": ["unit session percentage", "unit session %", "conversion rate", "cvr"],
     "buy_box_percentage": ["buy box percentage", "buy box %"],
     "campaign_name": ["campaign name", "campaign"],
@@ -471,3 +472,126 @@ def build_listing_audits(db: Session) -> list[dict]:
             issues.append("缺少主图链接，建议检查图片资料是否完整。")
         audits.append({"listing": item, "issues": issues or ["基础信息完整，后续结合转化率和广告词做精细优化。"]})
     return audits
+
+
+def _raw_float(row: BusinessMetric, *keys: str) -> float:
+    try:
+        raw = json.loads(row.raw_json or "{}")
+    except json.JSONDecodeError:
+        raw = {}
+    for key in keys:
+        value = raw.get(key)
+        parsed = to_float(value)
+        if parsed is not None:
+            return parsed
+    return 0.0
+
+
+def _raw_text(row: BusinessMetric, *keys: str) -> str:
+    try:
+        raw = json.loads(row.raw_json or "{}")
+    except json.JSONDecodeError:
+        raw = {}
+    for key in keys:
+        value = raw.get(key)
+        if value not in (None, ""):
+            return str(value)
+    return ""
+
+
+def build_business_overview(db: Session) -> dict:
+    latest_batch = (
+        db.execute(
+            select(ImportBatch)
+            .where(ImportBatch.report_type == "business", ImportBatch.status == "success")
+            .order_by(desc(ImportBatch.created_at))
+            .limit(1)
+        )
+        .scalar_one_or_none()
+    )
+    if not latest_batch:
+        return {"batch": None, "rows": [], "summary": {}, "insights": []}
+
+    metrics = db.execute(select(BusinessMetric).where(BusinessMetric.batch_id == latest_batch.id)).scalars().all()
+    rows = []
+    for row in metrics:
+        sales = row.ordered_sales if row.ordered_sales is not None else _raw_float(row, "已订购商品销售额", "Ordered Product Sales")
+        b2b_sales = _raw_float(row, "已订购商品销售额 - B2B", "Ordered Product Sales - B2B")
+        units = row.units_ordered if row.units_ordered is not None else _raw_float(row, "已订购商品数量", "Units Ordered")
+        orders = _raw_float(row, "订单商品总数", "Total Order Items")
+        sessions = row.sessions if row.sessions is not None else _raw_float(row, "会话数 - 总计", "Sessions - Total", "Sessions")
+        cvr = row.conversion_rate if row.conversion_rate is not None else _raw_float(row, "订单商品会话百分比", "Unit Session Percentage")
+        if cvr and cvr > 1:
+            cvr = cvr / 100
+        asp = _raw_float(row, "平均售价", "Average Sales per Unit")
+        rows.append(
+            {
+                "date": _raw_text(row, "日期", "Date") or row.sku or row.asin or "",
+                "sales": sales,
+                "b2b_sales": b2b_sales,
+                "units": units,
+                "orders": orders,
+                "sessions": sessions,
+                "conversion_rate": cvr,
+                "average_price": asp or (sales / units if units else 0),
+            }
+        )
+
+    total_sales = sum(item["sales"] for item in rows)
+    total_b2b = sum(item["b2b_sales"] for item in rows)
+    total_units = sum(item["units"] for item in rows)
+    total_orders = sum(item["orders"] for item in rows)
+    total_sessions = sum(item["sessions"] for item in rows)
+    day_count = len(rows)
+    first_half = rows[: max(1, day_count // 2)]
+    second_half = rows[max(1, day_count // 2) :]
+
+    def avg_sales(items):
+        return sum(item["sales"] for item in items) / len(items) if items else 0
+
+    summary = {
+        "day_count": day_count,
+        "total_sales": total_sales,
+        "avg_daily_sales": total_sales / day_count if day_count else 0,
+        "total_b2b": total_b2b,
+        "b2b_ratio": total_b2b / total_sales if total_sales else 0,
+        "total_units": total_units,
+        "total_orders": total_orders,
+        "total_sessions": total_sessions,
+        "conversion_rate": total_orders / total_sessions if total_sessions else 0,
+        "unit_session_rate": total_units / total_sessions if total_sessions else 0,
+        "average_price": total_sales / total_units if total_units else 0,
+        "average_order_value": total_sales / total_orders if total_orders else 0,
+        "first_half_avg_sales": avg_sales(first_half),
+        "second_half_avg_sales": avg_sales(second_half),
+    }
+    summary["sales_trend"] = (
+        (summary["second_half_avg_sales"] - summary["first_half_avg_sales"]) / summary["first_half_avg_sales"]
+        if summary["first_half_avg_sales"]
+        else 0
+    )
+    top_days = sorted(rows, key=lambda item: item["sales"], reverse=True)[:5]
+    low_days = sorted(rows, key=lambda item: item["sales"])[:5]
+    insights = []
+    if summary["sales_trend"] > 0.08:
+        insights.append("后半段日均销售额明显高于前半段，说明近期销售动能在增强。")
+    elif summary["sales_trend"] < -0.08:
+        insights.append("后半段日均销售额低于前半段，需要检查广告、库存、价格或排名变化。")
+    else:
+        insights.append("整体销售较稳定，下一步重点看 SKU 级利润和广告词效率。")
+    if summary["conversion_rate"] >= 0.1:
+        insights.append("整体转化率超过 10%，转化基础不错，可以优先从广告放量和高利润 SKU 扩量入手。")
+    else:
+        insights.append("整体转化率偏低，优先排查 Listing 图片、价格、评论和流量相关性。")
+    if summary["b2b_ratio"] >= 0.05:
+        insights.append("B2B 销售占比不低，可以考虑数量折扣、多件装和 Business Price。")
+    if summary["average_price"] >= 30:
+        insights.append("平均售价较高，具备一定广告承受能力；后续要结合成本表确认真实利润。")
+    return {
+        "batch": latest_batch,
+        "rows": rows,
+        "summary": summary,
+        "top_days": top_days,
+        "low_days": low_days,
+        "insights": insights,
+    }
