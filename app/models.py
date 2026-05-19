@@ -174,6 +174,88 @@ class AdvertisedProductMetric(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
 
 
+class CampaignMetric(Base):
+    __tablename__ = "campaign_metrics"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("import_batches.id"), nullable=False, index=True)
+    campaign_name: Mapped[Optional[str]] = mapped_column(String(255), index=True)
+    campaign_id: Mapped[Optional[str]] = mapped_column(String(120), index=True)
+    campaign_status: Mapped[Optional[str]] = mapped_column(String(60), index=True)
+    impressions: Mapped[Optional[float]] = mapped_column(Float)
+    clicks: Mapped[Optional[float]] = mapped_column(Float)
+    spend: Mapped[Optional[float]] = mapped_column(Float)
+    sales: Mapped[Optional[float]] = mapped_column(Float)
+    orders: Mapped[Optional[float]] = mapped_column(Float)
+    acos: Mapped[Optional[float]] = mapped_column(Float)
+    budget: Mapped[Optional[float]] = mapped_column(Float)
+    raw_json: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
+class TargetingMetric(Base):
+    __tablename__ = "targeting_metrics"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("import_batches.id"), nullable=False, index=True)
+    campaign_name: Mapped[Optional[str]] = mapped_column(String(255), index=True)
+    ad_group_name: Mapped[Optional[str]] = mapped_column(String(255))
+    targeting: Mapped[Optional[str]] = mapped_column(Text, index=True)
+    match_type: Mapped[Optional[str]] = mapped_column(String(80))
+    status: Mapped[Optional[str]] = mapped_column(String(60), index=True)
+    bid: Mapped[Optional[float]] = mapped_column(Float)
+    impressions: Mapped[Optional[float]] = mapped_column(Float)
+    clicks: Mapped[Optional[float]] = mapped_column(Float)
+    spend: Mapped[Optional[float]] = mapped_column(Float)
+    sales: Mapped[Optional[float]] = mapped_column(Float)
+    orders: Mapped[Optional[float]] = mapped_column(Float)
+    acos: Mapped[Optional[float]] = mapped_column(Float)
+    raw_json: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
+class BulkOperationItem(Base):
+    __tablename__ = "bulk_operation_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("import_batches.id"), nullable=False, index=True)
+    record_type: Mapped[Optional[str]] = mapped_column(String(120), index=True)
+    operation: Mapped[Optional[str]] = mapped_column(String(80))
+    campaign_name: Mapped[Optional[str]] = mapped_column(String(255), index=True)
+    campaign_id: Mapped[Optional[str]] = mapped_column(String(120), index=True)
+    campaign_status: Mapped[Optional[str]] = mapped_column(String(60), index=True)
+    ad_group_name: Mapped[Optional[str]] = mapped_column(String(255))
+    ad_group_id: Mapped[Optional[str]] = mapped_column(String(120))
+    entity_id: Mapped[Optional[str]] = mapped_column(String(120), index=True)
+    entity_status: Mapped[Optional[str]] = mapped_column(String(60), index=True)
+    keyword_text: Mapped[Optional[str]] = mapped_column(Text, index=True)
+    match_type: Mapped[Optional[str]] = mapped_column(String(80))
+    targeting_expression: Mapped[Optional[str]] = mapped_column(Text, index=True)
+    sku: Mapped[Optional[str]] = mapped_column(String(120), index=True)
+    asin: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    bid: Mapped[Optional[float]] = mapped_column(Float)
+    budget: Mapped[Optional[float]] = mapped_column(Float)
+    raw_json: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
+class InventoryItem(Base):
+    __tablename__ = "inventory_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("import_batches.id"), nullable=False, index=True)
+    sku: Mapped[Optional[str]] = mapped_column(String(120), index=True)
+    asin: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    fnsku: Mapped[Optional[str]] = mapped_column(String(80))
+    product_name: Mapped[Optional[str]] = mapped_column(Text)
+    available: Mapped[Optional[float]] = mapped_column(Float)
+    inbound: Mapped[Optional[float]] = mapped_column(Float)
+    reserved: Mapped[Optional[float]] = mapped_column(Float)
+    days_of_supply: Mapped[Optional[float]] = mapped_column(Float)
+    raw_json: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
 class CostItem(Base):
     __tablename__ = "cost_items"
 

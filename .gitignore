@@ -5,3 +5,9 @@ __pycache__/
 .pycache/
 *.db
 .DS_Store
+amazon_reports/inbox/*
+amazon_reports/imported/*
+amazon_reports/failed/*
+!amazon_reports/inbox/.gitkeep
+!amazon_reports/imported/.gitkeep
+!amazon_reports/failed/.gitkeep

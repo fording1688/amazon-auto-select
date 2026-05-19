@@ -17,11 +17,15 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     AdvertisedProductMetric,
+    BulkOperationItem,
     BusinessMetric,
+    CampaignMetric,
     CostItem,
     ImportBatch,
+    InventoryItem,
     ListingItem,
     SearchTermMetric,
+    TargetingMetric,
 )
 
 
@@ -29,6 +33,10 @@ REPORT_TYPES = {
     "business": "Business Report",
     "search_terms": "Advertising Search Term Report",
     "advertised_products": "Advertised Product Report",
+    "campaigns": "Campaign Report",
+    "targeting": "Targeting Report",
+    "bulk_operations": "Bulk Operations",
+    "inventory": "Inventory Report",
     "costs": "成本表",
     "listings": "Listing 基础信息表",
 }
@@ -50,16 +58,23 @@ ALIASES = {
     "date": ["date", "日期"],
     "conversion_rate": ["unit session percentage", "unit session %", "conversion rate", "cvr"],
     "buy_box_percentage": ["buy box percentage", "buy box %"],
-    "campaign_name": ["campaign name", "campaign"],
-    "ad_group_name": ["ad group name", "ad group"],
-    "targeting": ["targeting", "target", "keyword", "keyword or product targeting"],
-    "search_term": ["customer search term", "search term", "customersearchterm"],
-    "impressions": ["impressions"],
-    "clicks": ["clicks"],
-    "spend": ["spend", "cost", "ad spend"],
-    "ad_sales": ["7 day total sales", "14 day total sales", "sales", "total sales"],
-    "orders": ["7 day total orders", "14 day total orders", "orders", "total orders"],
-    "acos": ["acos", "total advertising cost of sales acos", "advertising cost of sales"],
+    "campaign_name": ["campaign name", "campaign", "广告活动名称"],
+    "campaign_id": ["campaign id", "campaignid"],
+    "campaign_status": ["campaign status", "campaign state", "state", "status", "广告活动状态"],
+    "ad_group_name": ["ad group name", "ad group", "广告组名称"],
+    "ad_group_id": ["ad group id", "adgroupid"],
+    "targeting": ["targeting", "target", "keyword", "keyword or product targeting", "投放"],
+    "match_type": ["match type", "matchtype", "匹配类型"],
+    "targeting_status": ["targeting status", "keyword status", "status", "state", "投放状态"],
+    "bid": ["bid", "max bid", "竞价"],
+    "budget": ["budget", "daily budget", "campaign budget", "预算", "每日预算"],
+    "search_term": ["customer search term", "search term", "customersearchterm", "客户搜索词", "搜索词"],
+    "impressions": ["impressions", "展示量"],
+    "clicks": ["clicks", "点击量"],
+    "spend": ["spend", "cost", "ad spend", "花费"],
+    "ad_sales": ["7 day total sales", "14 day total sales", "sales", "total sales", "7天总销售额", "14天总销售额", "销售额"],
+    "orders": ["7 day total orders", "14 day total orders", "orders", "total orders", "7天总订单数", "14天总订单数", "订单数"],
+    "acos": ["acos", "total advertising cost of sales acos", "advertising cost of sales", "广告投入产出比", "总广告投入产出比"],
     "purchase_cost": ["purchase cost", "product cost", "unit cost", "采购成本"],
     "first_leg_shipping": ["first leg shipping", "shipping cost", "头程", "头程运费"],
     "packaging_cost": ["packaging cost", "package cost", "包装成本"],
@@ -76,6 +91,17 @@ ALIASES = {
     "price": ["price", "售价", "sale price"],
     "coupon": ["coupon", "优惠券"],
     "main_image_url": ["main image url", "image url", "main_image_url"],
+    "record_type": ["record type", "entity", "entity type", "product"],
+    "operation": ["operation"],
+    "entity_id": ["entity id", "keyword id", "target id", "ad id"],
+    "entity_status": ["entity status", "status", "state"],
+    "keyword_text": ["keyword text", "keyword", "keyword or product targeting"],
+    "targeting_expression": ["targeting expression", "product targeting expression", "targeting"],
+    "fnsku": ["fnsku"],
+    "available": ["available", "afn fulfillable quantity", "sellable on hand quantity"],
+    "inbound": ["inbound", "afn inbound working quantity", "inbound quantity"],
+    "reserved": ["reserved", "afn reserved quantity"],
+    "days_of_supply": ["days of supply", "estimated days of supply"],
 }
 
 
@@ -109,9 +135,21 @@ def _alias_map(headers: list[str]) -> dict[str, str]:
     result = {}
     for canonical, aliases in ALIASES.items():
         for alias in aliases:
-            hit = normalized.get(normalize_header(alias))
+            normalized_alias = normalize_header(alias)
+            hit = normalized.get(normalized_alias)
             if hit:
                 result[canonical] = hit
+                break
+            fuzzy_hit = next(
+                (
+                    original
+                    for normalized_header, original in normalized.items()
+                    if normalized_alias and normalized_alias in normalized_header
+                ),
+                None,
+            )
+            if fuzzy_hit:
+                result[canonical] = fuzzy_hit
                 break
     return result
 
@@ -145,24 +183,73 @@ def _json(row: dict) -> str:
     return json.dumps(row, ensure_ascii=False, default=str)
 
 
+def _is_empty_cell(value: Any) -> bool:
+    return value is None or str(value).strip() == ""
+
+
+def _header_score(values: list[Any]) -> int:
+    headers = [str(value or "").strip() for value in values]
+    alias_hits = len(_alias_map(headers))
+    non_empty = sum(1 for value in headers if value)
+    long_text_hits = sum(1 for value in headers if len(str(value)) > 80)
+    return alias_hits * 3 + min(non_empty, 6) - long_text_hits * 2
+
+
+def _dict_rows_from_matrix(rows: list[tuple[Any, ...]], sheet_name: str | None = None) -> list[dict]:
+    if not rows:
+        return []
+
+    best_index = 0
+    best_score = -1
+    scan_limit = min(len(rows), 80)
+    for index in range(scan_limit):
+        values = list(rows[index])
+        if not any(not _is_empty_cell(value) for value in values):
+            continue
+        score = _header_score(values)
+        if score > best_score:
+            best_score = score
+            best_index = index
+
+    if best_score < 6:
+        best_index = 0
+
+    raw_headers = [str(value or "").strip() for value in rows[best_index]]
+    headers = []
+    seen: dict[str, int] = defaultdict(int)
+    for index, header in enumerate(raw_headers):
+        cleaned = header or f"column_{index + 1}"
+        seen[cleaned] += 1
+        if seen[cleaned] > 1:
+            cleaned = f"{cleaned}_{seen[cleaned]}"
+        headers.append(cleaned)
+
+    parsed = []
+    for values in rows[best_index + 1 :]:
+        if not any(not _is_empty_cell(value) for value in values):
+            continue
+        row = {headers[index]: values[index] if index < len(values) else "" for index in range(len(headers))}
+        if sheet_name:
+            row["_sheet_name"] = sheet_name
+        parsed.append(row)
+    return parsed
+
+
 def parse_tabular_file(file_name: str, content: bytes) -> list[dict]:
     lower = file_name.lower()
     if lower.endswith(".csv") or lower.endswith(".tsv"):
         text = content.decode("utf-8-sig", errors="ignore")
         dialect = csv.excel_tab if lower.endswith(".tsv") else csv.excel
-        return [dict(row) for row in csv.DictReader(io.StringIO(text), dialect=dialect)]
+        matrix = list(csv.reader(io.StringIO(text), dialect=dialect))
+        return _dict_rows_from_matrix([tuple(row) for row in matrix])
     if lower.endswith(".xlsx") or lower.endswith(".xlsm"):
-        workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
-        sheet = workbook.active
-        rows = list(sheet.iter_rows(values_only=True))
-        if not rows:
-            return []
-        headers = [str(value or "").strip() for value in rows[0]]
+        workbook = load_workbook(io.BytesIO(content), read_only=False, data_only=True)
         parsed = []
-        for values in rows[1:]:
-            if not any(value not in (None, "") for value in values):
-                continue
-            parsed.append({headers[index]: values[index] if index < len(values) else "" for index in range(len(headers))})
+        for sheet in workbook.worksheets:
+            rows = list(sheet.iter_rows(values_only=True))
+            sheet_rows = _dict_rows_from_matrix(rows, sheet.title)
+            if sheet_rows and len(_alias_map(list(sheet_rows[0].keys()))) >= 2:
+                parsed.extend(sheet_rows)
         return parsed
     raise ValueError("只支持 CSV、TSV、XLSX、XLSM 文件。")
 
@@ -178,12 +265,14 @@ def import_report(db: Session, report_type: str, file_name: str, content: bytes)
         rows = parse_tabular_file(file_name, content)
         if not rows:
             raise ValueError("文件没有可读取的数据行。")
-        alias = _alias_map(list(rows[0].keys()))
         for row in rows:
+            alias = _alias_map(list(row.keys()))
             _insert_row(db, batch.id, report_type, row, alias)
         batch.status = "success"
         batch.row_count = len(rows)
     except Exception as exc:
+        db.rollback()
+        batch = db.get(ImportBatch, batch.id)
         batch.status = "failed"
         batch.error_message = str(exc)
     db.commit()
@@ -198,7 +287,17 @@ def ensure_report_dirs() -> None:
 
 def infer_report_type(file_name: str, rows: list[dict]) -> str:
     name = file_name.lower()
-    headers = set(normalize_header(header) for header in (rows[0].keys() if rows else []))
+    headers = set()
+    for row in rows[:20]:
+        headers.update(normalize_header(header) for header in row.keys())
+    if any(term in name for term in ["bulk", "bulk_operations", "bulk-operations", "批量"]):
+        return "bulk_operations"
+    if any(term in name for term in ["campaign", "campaigns", "广告活动"]):
+        return "campaigns"
+    if any(term in name for term in ["targeting", "targeting_report", "投放"]):
+        return "targeting"
+    if any(term in name for term in ["inventory", "fba_inventory", "库存"]):
+        return "inventory"
     if any(term in name for term in ["search_term", "search-term", "searchterm", "搜索词"]):
         return "search_terms"
     if any(term in name for term in ["advertised_product", "advertised-product", "ad_products", "广告商品"]):
@@ -212,6 +311,14 @@ def infer_report_type(file_name: str, rows: list[dict]) -> str:
 
     if normalize_header("Customer Search Term") in headers or normalize_header("客户搜索词") in headers:
         return "search_terms"
+    if normalize_header("Entity") in headers or normalize_header("Record Type") in headers:
+        return "bulk_operations"
+    if normalize_header("Campaign ID") in headers and normalize_header("Budget") in headers:
+        return "campaigns"
+    if normalize_header("Match Type") in headers and normalize_header("Bid") in headers:
+        return "targeting"
+    if normalize_header("fnsku") in headers or normalize_header("afn fulfillable quantity") in headers:
+        return "inventory"
     if normalize_header("Advertised SKU") in headers or normalize_header("Advertised ASIN") in headers:
         return "advertised_products"
     if normalize_header("purchase_cost") in headers or normalize_header("采购成本") in headers:
@@ -235,7 +342,8 @@ def scan_inbox(db: Session) -> list[dict]:
             rows = parse_tabular_file(path.name, content)
             report_type = infer_report_type(path.name, rows)
             batch = import_report(db, report_type, path.name, content)
-            destination = REPORT_IMPORTED / f"{path.stem}-{timestamp}{path.suffix}"
+            target_dir = REPORT_IMPORTED if batch.status == "success" else REPORT_FAILED
+            destination = target_dir / f"{path.stem}-{timestamp}{path.suffix}"
             shutil.move(str(path), destination)
             results.append(
                 {
@@ -248,6 +356,7 @@ def scan_inbox(db: Session) -> list[dict]:
                 }
             )
         except Exception as exc:
+            db.rollback()
             destination = REPORT_FAILED / f"{path.stem}-{timestamp}{path.suffix}"
             shutil.move(str(path), destination)
             results.append(
@@ -309,6 +418,76 @@ def _insert_row(db: Session, batch_id: int, report_type: str, row: dict, alias: 
                 sales=to_float(_get(row, alias, "ad_sales")),
                 orders=to_float(_get(row, alias, "orders")),
                 acos=to_float(_get(row, alias, "acos")),
+            )
+        )
+    elif report_type == "campaigns":
+        db.add(
+            CampaignMetric(
+                **common,
+                campaign_name=str(_get(row, alias, "campaign_name")).strip() or None,
+                campaign_id=str(_get(row, alias, "campaign_id")).strip() or None,
+                campaign_status=str(_get(row, alias, "campaign_status")).strip() or None,
+                impressions=to_float(_get(row, alias, "impressions")),
+                clicks=to_float(_get(row, alias, "clicks")),
+                spend=to_float(_get(row, alias, "spend")),
+                sales=to_float(_get(row, alias, "ad_sales")),
+                orders=to_float(_get(row, alias, "orders")),
+                acos=to_float(_get(row, alias, "acos")),
+                budget=to_float(_get(row, alias, "budget")),
+            )
+        )
+    elif report_type == "targeting":
+        db.add(
+            TargetingMetric(
+                **common,
+                campaign_name=str(_get(row, alias, "campaign_name")).strip() or None,
+                ad_group_name=str(_get(row, alias, "ad_group_name")).strip() or None,
+                targeting=str(_get(row, alias, "targeting")).strip() or None,
+                match_type=str(_get(row, alias, "match_type")).strip() or None,
+                status=str(_get(row, alias, "targeting_status")).strip() or None,
+                bid=to_float(_get(row, alias, "bid")),
+                impressions=to_float(_get(row, alias, "impressions")),
+                clicks=to_float(_get(row, alias, "clicks")),
+                spend=to_float(_get(row, alias, "spend")),
+                sales=to_float(_get(row, alias, "ad_sales")),
+                orders=to_float(_get(row, alias, "orders")),
+                acos=to_float(_get(row, alias, "acos")),
+            )
+        )
+    elif report_type == "bulk_operations":
+        db.add(
+            BulkOperationItem(
+                **common,
+                record_type=str(_get(row, alias, "record_type")).strip() or None,
+                operation=str(_get(row, alias, "operation")).strip() or None,
+                campaign_name=str(_get(row, alias, "campaign_name")).strip() or None,
+                campaign_id=str(_get(row, alias, "campaign_id")).strip() or None,
+                campaign_status=str(_get(row, alias, "campaign_status")).strip() or None,
+                ad_group_name=str(_get(row, alias, "ad_group_name")).strip() or None,
+                ad_group_id=str(_get(row, alias, "ad_group_id")).strip() or None,
+                entity_id=str(_get(row, alias, "entity_id")).strip() or None,
+                entity_status=str(_get(row, alias, "entity_status")).strip() or None,
+                keyword_text=str(_get(row, alias, "keyword_text")).strip() or None,
+                match_type=str(_get(row, alias, "match_type")).strip() or None,
+                targeting_expression=str(_get(row, alias, "targeting_expression")).strip() or None,
+                sku=str(_get(row, alias, "sku")).strip() or None,
+                asin=str(_get(row, alias, "asin")).strip() or None,
+                bid=to_float(_get(row, alias, "bid")),
+                budget=to_float(_get(row, alias, "budget")),
+            )
+        )
+    elif report_type == "inventory":
+        db.add(
+            InventoryItem(
+                **common,
+                sku=str(_get(row, alias, "sku")).strip() or None,
+                asin=str(_get(row, alias, "asin")).strip() or None,
+                fnsku=str(_get(row, alias, "fnsku")).strip() or None,
+                product_name=str(_get(row, alias, "product_name")).strip() or None,
+                available=to_float(_get(row, alias, "available")),
+                inbound=to_float(_get(row, alias, "inbound")),
+                reserved=to_float(_get(row, alias, "reserved")),
+                days_of_supply=to_float(_get(row, alias, "days_of_supply")),
             )
         )
     elif report_type == "costs":

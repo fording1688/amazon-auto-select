@@ -2,7 +2,7 @@
 {% block content %}
 <section class="panel">
   <h1>报表上传</h1>
-  <p class="muted">先支持 Business Report、Search Term Report、Advertised Product Report、成本表、Listing 表。CSV/XLSX 都可以。</p>
+  <p class="muted">支持 Business Report、Bulk Operations、Campaign、Targeting、Search Term、Advertised Product、Inventory、成本表、Listing 表。CSV/TSV/XLSX/XLSM 都可以。</p>
   <form class="inline-form" method="post" action="/imports" enctype="multipart/form-data">
     <select name="report_type">
       {% for value, label in report_types.items() %}
@@ -58,9 +58,13 @@
   <h2>建议上传顺序</h2>
   <ol>
     <li>成本表：用于计算真实利润。</li>
-    <li>Business Report：用于看销售、Session、转化。</li>
+    <li>Business Report - Detail Page Sales and Traffic by Child Item：用于看 SKU/ASIN 销售、Session、转化。</li>
+    <li>Bulk Operations：用于同步广告当前状态，避免建议已关闭的活动。</li>
+    <li>Campaign Report：用于看活动层级花费、预算、ACOS。</li>
     <li>Advertised Product Report：用于按 SKU 计算广告花费。</li>
     <li>Search Term Report：用于生成广告动作清单。</li>
+    <li>Targeting Report：用于看 exact/phrase/broad/ASIN 定投表现。</li>
+    <li>Inventory Report：用于判断断货和库存压力。</li>
     <li>Listing 表：用于基础体检。</li>
   </ol>
 </section>
@@ -71,6 +75,7 @@
 amazon_reports/imported/   成功导入后自动归档
 amazon_reports/failed/     识别或导入失败后归档</pre>
   <p class="muted">文件名建议包含 business、search_term、advertised_product、cost、listing 之一，识别会更稳。</p>
+  <p class="muted">广告文件建议命名：bulk_operations_日期、campaign_日期、targeting_日期、search_term_日期、advertised_product_日期。</p>
 </section>
 
 <section class="panel">
