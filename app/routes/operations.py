@@ -5,6 +5,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.operations_ai import generate_operations_ai_report, latest_operations_ai_report, report_to_view
 from app.report_importer import (
     REPORT_TYPES,
     build_ad_actions,
@@ -135,6 +136,18 @@ def business_overview(request: Request, db: Session = Depends(get_db)):
 @router.get("/operations/ad-actions")
 def ad_actions(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse("ad_actions.html", {"request": request, "actions": build_ad_actions(db)})
+
+
+@router.get("/operations/ai-advisor")
+def ai_advisor(request: Request, db: Session = Depends(get_db)):
+    report = report_to_view(latest_operations_ai_report(db))
+    return templates.TemplateResponse("ai_advisor.html", {"request": request, "report": report})
+
+
+@router.post("/operations/ai-advisor/generate")
+def generate_ai_advisor(request: Request, db: Session = Depends(get_db)):
+    report = generate_operations_ai_report(db)
+    return templates.TemplateResponse("ai_advisor.html", {"request": request, "report": report_to_view(report)})
 
 
 @router.get("/operations/listing-audit")

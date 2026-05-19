@@ -273,6 +273,44 @@ td {
   margin-bottom: 0;
 }
 
+.mini-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.mini-card p {
+  margin: 8px 0 0;
+}
+
+.dense-list {
+  margin-bottom: 0;
+  padding-left: 20px;
+}
+
+.dense-list li {
+  margin-bottom: 8px;
+}
+
+.plan-grid,
+.two-column {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.plan-grid div {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.plan-grid p {
+  margin-bottom: 0;
+}
+
 .section-heading,
 .pagination {
   align-items: center;

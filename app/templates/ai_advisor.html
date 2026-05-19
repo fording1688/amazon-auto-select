@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+  <div class="section-heading">
+    <div>
+      <h1>AI 运营建议</h1>
+      <p class="muted">综合 Business、广告、Bulk、成本、Listing 等数据，让大模型输出可执行动作。每次上传新一轮报告后，建议重新生成一次。</p>
+    </div>
+    <form method="post" action="/operations/ai-advisor/generate">
+      <button type="submit">生成最新 AI 建议</button>
+    </form>
+  </div>
+  {% if report %}
+  <div class="metrics">
+    <span>报告 ID {{ report.id }}</span>
+    <span>状态 {{ report.status }}</span>
+    <span>生成时间 {{ report.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</span>
+  </div>
+  {% if report.error_message %}
+  <div class="alert warning">
+    <strong>注意：</strong>{{ report.error_message }}。当前展示的是规则兜底建议，配置 OpenAI Key 后会给出更深度的综合判断。
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="alert warning">还没有 AI 运营报告。请先上传报表，然后点击“生成最新 AI 建议”。</div>
+  {% endif %}
+</section>
+
+{% if report %}
+<section class="panel">
+  <h2>老板摘要</h2>
+  <ul class="dense-list">
+    {% for item in report.executive_summary %}
+    <li>{{ item }}</li>
+    {% else %}
+    <li>暂无摘要。</li>
+    {% endfor %}
+  </ul>
+</section>
+
+<section class="panel">
+  <h2>优先动作</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>优先级</th>
+        <th>范围</th>
+        <th>对象</th>
+        <th>证据</th>
+        <th>具体动作</th>
+        <th>预期影响 / 风险检查</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in report.urgent_actions %}
+      <tr>
+        <td><span class="badge decision">{{ item.priority }}</span></td>
+        <td>{{ item.area }}</td>
+        <td><strong>{{ item.object }}</strong></td>
+        <td>{{ item.evidence }}</td>
+        <td>{{ item.action }}</td>
+        <td>
+          {{ item.expected_impact }}<br>
+          <span class="muted">{{ item.risk_check }}</span>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6">暂无优先动作。</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel">
+  <h2>SKU 决策</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>SKU</th>
+        <th>决策</th>
+        <th>证据</th>
+        <th>动作</th>
+        <th>观察指标</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in report.sku_actions %}
+      <tr>
+        <td><strong>{{ item.sku }}</strong></td>
+        <td>{{ item.decision }}</td>
+        <td>{{ item.evidence }}</td>
+        <td>{{ item.action }}</td>
+        <td>{{ item.watch_metric }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5">暂无 SKU 建议。</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel">
+  <h2>广告动作</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>活动 / 搜索词</th>
+        <th>动作</th>
+        <th>证据</th>
+        <th>具体调整</th>
+        <th>观察指标</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in report.ad_actions %}
+      <tr>
+        <td><strong>{{ item.campaign_or_term }}</strong></td>
+        <td>{{ item.action }}</td>
+        <td>{{ item.evidence }}</td>
+        <td>{{ item.exact_change }}</td>
+        <td>{{ item.watch_metric }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5">暂无广告建议。</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel">
+  <h2>Listing 动作</h2>
+  <div class="grid-list">
+    {% for item in report.listing_actions %}
+    <div class="mini-card">
+      <strong>{{ item.sku_or_asin }}</strong>
+      <p><b>问题：</b>{{ item.problem }}</p>
+      <p><b>动作：</b>{{ item.action }}</p>
+      <p><b>图片/文案方向：</b>{{ item.image_or_copy_direction }}</p>
+    </div>
+    {% else %}
+    <p class="muted">暂无 Listing 建议。</p>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel">
+  <h2>7 天执行计划</h2>
+  <div class="plan-grid">
+    <div><strong>Day 1</strong><p>{{ report.next_7_days_plan.day_1 }}</p></div>
+    <div><strong>Day 2-3</strong><p>{{ report.next_7_days_plan.day_2_to_3 }}</p></div>
+    <div><strong>Day 4-7</strong><p>{{ report.next_7_days_plan.day_4_to_7 }}</p></div>
+    <div><strong>成功标准</strong><p>{{ report.next_7_days_plan.success_criteria }}</p></div>
+    <div><strong>止损标准</strong><p>{{ report.next_7_days_plan.stop_loss_criteria }}</p></div>
+  </div>
+</section>
+
+<section class="panel two-column">
+  <div>
+    <h2>数据缺口</h2>
+    <ul class="dense-list">
+      {% for item in report.data_gaps %}<li>{{ item }}</li>{% else %}<li>暂无明显数据缺口。</li>{% endfor %}
+    </ul>
+  </div>
+  <div>
+    <h2>暂时不要做</h2>
+    <ul class="dense-list">
+      {% for item in report.do_not_do %}<li>{{ item }}</li>{% else %}<li>暂无。</li>{% endfor %}
+    </ul>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

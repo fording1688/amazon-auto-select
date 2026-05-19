@@ -119,6 +119,25 @@ class ImportBatch(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
 
 
+class OperationsAiReport(Base):
+    __tablename__ = "operations_ai_reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    status: Mapped[str] = mapped_column(String(30), default="success", index=True)
+    executive_summary_json: Mapped[Optional[str]] = mapped_column(Text)
+    urgent_actions_json: Mapped[Optional[str]] = mapped_column(Text)
+    sku_actions_json: Mapped[Optional[str]] = mapped_column(Text)
+    ad_actions_json: Mapped[Optional[str]] = mapped_column(Text)
+    listing_actions_json: Mapped[Optional[str]] = mapped_column(Text)
+    budget_actions_json: Mapped[Optional[str]] = mapped_column(Text)
+    data_gaps_json: Mapped[Optional[str]] = mapped_column(Text)
+    next_7_days_plan_json: Mapped[Optional[str]] = mapped_column(Text)
+    do_not_do_json: Mapped[Optional[str]] = mapped_column(Text)
+    raw_ai_response: Mapped[Optional[str]] = mapped_column(Text)
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
 class BusinessMetric(Base):
     __tablename__ = "business_metrics"
 
