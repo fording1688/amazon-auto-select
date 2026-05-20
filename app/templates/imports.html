@@ -169,13 +169,13 @@ amazon_reports/failed/     识别或导入失败后归档</pre>
   </table>
   <div class="pagination">
     {% if batch_pagination.has_prev %}
-    <a class="button ghost" href="/imports?page={{ batch_pagination.prev_page }}">上一页</a>
+    <a class="button ghost" href="{{ batch_pagination.base_url }}{{ batch_pagination.separator }}page={{ batch_pagination.prev_page }}">上一页</a>
     {% else %}
     <span class="button ghost disabled">上一页</span>
     {% endif %}
     <span>第 {{ batch_pagination.page }} / {{ batch_pagination.total_pages }} 页</span>
     {% if batch_pagination.has_next %}
-    <a class="button ghost" href="/imports?page={{ batch_pagination.next_page }}">下一页</a>
+    <a class="button ghost" href="{{ batch_pagination.base_url }}{{ batch_pagination.separator }}page={{ batch_pagination.next_page }}">下一页</a>
     {% else %}
     <span class="button ghost disabled">下一页</span>
     {% endif %}

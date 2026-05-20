@@ -42,4 +42,20 @@
   <div class="empty">暂无分析结果，请先到“手动任务”运行一次。</div>
   {% endfor %}
 </section>
+
+<section class="panel">
+  <div class="pagination">
+    {% if pagination.has_prev %}
+    <a class="button ghost" href="{{ pagination.base_url }}{{ pagination.separator }}page={{ pagination.prev_page }}">上一页</a>
+    {% else %}
+    <span class="button ghost disabled">上一页</span>
+    {% endif %}
+    <span>共 {{ pagination.total }} 条，第 {{ pagination.page }} / {{ pagination.total_pages }} 页</span>
+    {% if pagination.has_next %}
+    <a class="button ghost" href="{{ pagination.base_url }}{{ pagination.separator }}page={{ pagination.next_page }}">下一页</a>
+    {% else %}
+    <span class="button ghost disabled">下一页</span>
+    {% endif %}
+  </div>
+</section>
 {% endblock %}

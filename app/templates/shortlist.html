@@ -45,4 +45,20 @@
   <div class="empty">暂无测款候选。请先用 SerpApi 运行一次真实 Amazon 任务，或增加 replacement / compatible / pack 类关键词。</div>
   {% endfor %}
 </section>
+
+<section class="panel">
+  <div class="pagination">
+    {% if pagination.has_prev %}
+    <a class="button ghost" href="{{ pagination.base_url }}{{ pagination.separator }}page={{ pagination.prev_page }}">上一页</a>
+    {% else %}
+    <span class="button ghost disabled">上一页</span>
+    {% endif %}
+    <span>共 {{ pagination.total }} 条，第 {{ pagination.page }} / {{ pagination.total_pages }} 页</span>
+    {% if pagination.has_next %}
+    <a class="button ghost" href="{{ pagination.base_url }}{{ pagination.separator }}page={{ pagination.next_page }}">下一页</a>
+    {% else %}
+    <span class="button ghost disabled">下一页</span>
+    {% endif %}
+  </div>
+</section>
 {% endblock %}

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import desc, select
@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, get_db
 from app.models import TaskRun
+from app.pagination import paginate_list
 from app.tasks import run_analysis_task
 
 
@@ -22,9 +23,14 @@ def run_in_background() -> None:
 
 
 @router.get("")
-def task_runs(request: Request, db: Session = Depends(get_db)):
-    runs = db.execute(select(TaskRun).order_by(desc(TaskRun.started_at)).limit(30)).scalars().all()
-    return templates.TemplateResponse("task_runs.html", {"request": request, "runs": runs})
+def task_runs(
+    request: Request,
+    page: int = Query(1, ge=1),
+    db: Session = Depends(get_db),
+):
+    runs = db.execute(select(TaskRun).order_by(desc(TaskRun.started_at))).scalars().all()
+    page_runs, pagination = paginate_list(runs, page, 10, "/tasks")
+    return templates.TemplateResponse("task_runs.html", {"request": request, "runs": page_runs, "pagination": pagination})
 
 
 @router.post("/run")

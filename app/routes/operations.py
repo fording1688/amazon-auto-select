@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.operations_ai import generate_operations_ai_report, latest_operations_ai_report, report_to_view
+from app.pagination import build_pagination, paginate_list
 from app.report_importer import (
     REPORT_TYPES,
     build_ad_actions,
@@ -36,22 +37,12 @@ def _pending_inbox_files() -> list[str]:
 
 def _imports_context(request: Request, db: Session, page: int = 1, per_page: int = 10, **extra):
     total_batches = count_batches(db)
-    total_pages = max((total_batches + per_page - 1) // per_page, 1)
-    page = min(max(page, 1), total_pages)
+    pagination = build_pagination(total_batches, page, per_page, "/imports")
     context = {
         "request": request,
         "report_types": REPORT_TYPES,
-        "batches": latest_batches(db, limit=per_page, offset=(page - 1) * per_page),
-        "batch_pagination": {
-            "page": page,
-            "per_page": per_page,
-            "total": total_batches,
-            "total_pages": total_pages,
-            "has_prev": page > 1,
-            "has_next": page < total_pages,
-            "prev_page": page - 1,
-            "next_page": page + 1,
-        },
+        "batches": latest_batches(db, limit=per_page, offset=(pagination.page - 1) * pagination.per_page),
+        "batch_pagination": pagination,
         "scan_results": None,
         "scan_summary": None,
         "upload_result": None,
@@ -115,7 +106,11 @@ def scan_report_inbox(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/operations/dashboard")
-def sku_dashboard(request: Request, db: Session = Depends(get_db)):
+def sku_dashboard(
+    request: Request,
+    page: int = Query(1, ge=1),
+    db: Session = Depends(get_db),
+):
     rows = build_sku_dashboard(db)
     totals = {
         "sales": sum(row.sales for row in rows),
@@ -125,7 +120,11 @@ def sku_dashboard(request: Request, db: Session = Depends(get_db)):
     }
     totals["tacos"] = totals["ad_spend"] / totals["sales"] if totals["sales"] else None
     totals["margin"] = totals["profit"] / totals["sales"] if totals["sales"] else None
-    return templates.TemplateResponse("sku_dashboard.html", {"request": request, "rows": rows, "totals": totals})
+    page_rows, pagination = paginate_list(rows, page, 10, "/operations/dashboard")
+    return templates.TemplateResponse(
+        "sku_dashboard.html",
+        {"request": request, "rows": page_rows, "totals": totals, "pagination": pagination},
+    )
 
 
 @router.get("/operations/business-overview")
@@ -136,26 +135,18 @@ def business_overview(
 ):
     data = build_business_overview(db)
     rows = data.get("rows") or []
-    per_page = 10
-    total_pages = max((len(rows) + per_page - 1) // per_page, 1)
-    page = min(max(page, 1), total_pages)
-    data["rows"] = rows[(page - 1) * per_page : page * per_page]
-    data["pagination"] = {
-        "page": page,
-        "per_page": per_page,
-        "total": len(rows),
-        "total_pages": total_pages,
-        "has_prev": page > 1,
-        "has_next": page < total_pages,
-        "prev_page": page - 1,
-        "next_page": page + 1,
-    }
+    data["rows"], data["pagination"] = paginate_list(rows, page, 10, "/operations/business-overview")
     return templates.TemplateResponse("business_overview.html", {"request": request, **data})
 
 
 @router.get("/operations/ad-actions")
-def ad_actions(request: Request, db: Session = Depends(get_db)):
-    return templates.TemplateResponse("ad_actions.html", {"request": request, "actions": build_ad_actions(db)})
+def ad_actions(
+    request: Request,
+    page: int = Query(1, ge=1),
+    db: Session = Depends(get_db),
+):
+    actions, pagination = paginate_list(build_ad_actions(db), page, 10, "/operations/ad-actions")
+    return templates.TemplateResponse("ad_actions.html", {"request": request, "actions": actions, "pagination": pagination})
 
 
 @router.get("/operations/ai-advisor")
@@ -171,5 +162,10 @@ def generate_ai_advisor(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/operations/listing-audit")
-def listing_audit(request: Request, db: Session = Depends(get_db)):
-    return templates.TemplateResponse("listing_audit.html", {"request": request, "audits": build_listing_audits(db)})
+def listing_audit(
+    request: Request,
+    page: int = Query(1, ge=1),
+    db: Session = Depends(get_db),
+):
+    audits, pagination = paginate_list(build_listing_audits(db), page, 10, "/operations/listing-audit")
+    return templates.TemplateResponse("listing_audit.html", {"request": request, "audits": audits, "pagination": pagination})

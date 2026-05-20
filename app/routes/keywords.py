@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Keyword
 from app.opportunity import expand_keyword
+from app.pagination import paginate_list
 
 
 router = APIRouter(prefix="/keywords", tags=["keywords"])
@@ -14,9 +15,14 @@ templates = Jinja2Templates(directory="app/templates")
 
 
 @router.get("")
-def list_keywords(request: Request, db: Session = Depends(get_db)):
+def list_keywords(
+    request: Request,
+    page: int = Query(1, ge=1),
+    db: Session = Depends(get_db),
+):
     keywords = db.execute(select(Keyword).order_by(Keyword.id.desc())).scalars().all()
-    return templates.TemplateResponse("keywords.html", {"request": request, "keywords": keywords})
+    page_keywords, pagination = paginate_list(keywords, page, 20, "/keywords")
+    return templates.TemplateResponse("keywords.html", {"request": request, "keywords": page_keywords, "pagination": pagination})
 
 
 @router.post("")

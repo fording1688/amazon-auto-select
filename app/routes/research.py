@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import desc, select
@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.keyword_research import loads, run_keyword_research
 from app.models import Keyword, KeywordResearchRun
+from app.pagination import paginate_list
 
 
 router = APIRouter(prefix="/research", tags=["research"])
@@ -30,22 +31,33 @@ def _view_model(run: KeywordResearchRun | None) -> dict:
 
 
 @router.get("")
-def research_page(request: Request, db: Session = Depends(get_db)):
-    runs = db.execute(select(KeywordResearchRun).order_by(desc(KeywordResearchRun.created_at)).limit(20)).scalars().all()
+def research_page(
+    request: Request,
+    page: int = Query(1, ge=1),
+    db: Session = Depends(get_db),
+):
+    all_runs = db.execute(select(KeywordResearchRun).order_by(desc(KeywordResearchRun.created_at))).scalars().all()
+    runs, pagination = paginate_list(all_runs, page, 10, "/research")
     latest = runs[0] if runs else None
     return templates.TemplateResponse(
         "research.html",
-        {"request": request, "runs": runs, **_view_model(latest)},
+        {"request": request, "runs": runs, "pagination": pagination, **_view_model(latest)},
     )
 
 
 @router.get("/{run_id}")
-def research_detail(run_id: int, request: Request, db: Session = Depends(get_db)):
-    runs = db.execute(select(KeywordResearchRun).order_by(desc(KeywordResearchRun.created_at)).limit(20)).scalars().all()
+def research_detail(
+    run_id: int,
+    request: Request,
+    page: int = Query(1, ge=1),
+    db: Session = Depends(get_db),
+):
+    all_runs = db.execute(select(KeywordResearchRun).order_by(desc(KeywordResearchRun.created_at))).scalars().all()
+    runs, pagination = paginate_list(all_runs, page, 10, f"/research/{run_id}")
     run = db.get(KeywordResearchRun, run_id)
     return templates.TemplateResponse(
         "research.html",
-        {"request": request, "runs": runs, **_view_model(run)},
+        {"request": request, "runs": runs, "pagination": pagination, **_view_model(run)},
     )
 
 

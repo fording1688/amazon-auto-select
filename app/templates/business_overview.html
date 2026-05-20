@@ -133,13 +133,13 @@
   </table>
   <div class="pagination">
     {% if pagination.has_prev %}
-    <a class="button ghost" href="/operations/business-overview?page={{ pagination.prev_page }}">上一页</a>
+    <a class="button ghost" href="{{ pagination.base_url }}{{ pagination.separator }}page={{ pagination.prev_page }}">上一页</a>
     {% else %}
     <span class="button ghost disabled">上一页</span>
     {% endif %}
     <span>第 {{ pagination.page }} / {{ pagination.total_pages }} 页</span>
     {% if pagination.has_next %}
-    <a class="button ghost" href="/operations/business-overview?page={{ pagination.next_page }}">下一页</a>
+    <a class="button ghost" href="{{ pagination.base_url }}{{ pagination.separator }}page={{ pagination.next_page }}">下一页</a>
     {% else %}
     <span class="button ghost disabled">下一页</span>
     {% endif %}

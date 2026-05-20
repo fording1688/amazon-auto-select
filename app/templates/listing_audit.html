@@ -3,6 +3,7 @@
 <section class="panel">
   <h1>Listing 基础体检</h1>
   <p class="muted">先基于 Listing 表做基础检查：标题长度、核心意图词、五点完整度、尺寸/适配说明、主图链接。</p>
+  <p class="muted">共 {{ pagination.total }} 条，每页 {{ pagination.per_page }} 条。</p>
 </section>
 
 <section class="grid-list">
@@ -16,5 +17,21 @@
   {% else %}
   <div class="empty">暂无 Listing 数据。请先上传 Listing 基础信息表。</div>
   {% endfor %}
+</section>
+
+<section class="panel">
+  <div class="pagination">
+    {% if pagination.has_prev %}
+    <a class="button ghost" href="{{ pagination.base_url }}{{ pagination.separator }}page={{ pagination.prev_page }}">上一页</a>
+    {% else %}
+    <span class="button ghost disabled">上一页</span>
+    {% endif %}
+    <span>第 {{ pagination.page }} / {{ pagination.total_pages }} 页</span>
+    {% if pagination.has_next %}
+    <a class="button ghost" href="{{ pagination.base_url }}{{ pagination.separator }}page={{ pagination.next_page }}">下一页</a>
+    {% else %}
+    <span class="button ghost disabled">下一页</span>
+    {% endif %}
+  </div>
 </section>
 {% endblock %}
