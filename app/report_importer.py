@@ -821,6 +821,217 @@ def build_ad_action_groups(db: Session) -> list[dict]:
     return sorted(grouped.values(), key=lambda item: (priority_order[item["highest_priority"]], -item["total_spend"]))
 
 
+def _priority_rank(priority: str) -> int:
+    return {"P0": 0, "P1": 1, "P2": 2}.get(priority, 3)
+
+
+def _latest_success_batches_by_type(db: Session) -> dict[str, ImportBatch]:
+    batches = (
+        db.execute(select(ImportBatch).where(ImportBatch.status == "success").order_by(desc(ImportBatch.created_at)))
+        .scalars()
+        .all()
+    )
+    latest_by_type = {}
+    for batch in batches:
+        latest_by_type.setdefault(batch.report_type, batch)
+    return latest_by_type
+
+
+def _short_object(asin: str | None, sku: str | None) -> str:
+    if asin and sku and asin != sku:
+        return f"{asin} / {sku}"
+    return asin or sku or "未关联商品"
+
+
+def build_operations_cockpit(db: Session) -> dict:
+    sku_rows = build_sku_dashboard(db)
+    ad_groups = build_ad_action_groups(db)
+    listing_audits = build_listing_audits(db)
+    latest_by_type = _latest_success_batches_by_type(db)
+
+    total_sales = sum(row.sales for row in sku_rows)
+    total_ad_spend = sum(row.ad_spend for row in sku_rows)
+    total_profit = sum(row.estimated_profit for row in sku_rows)
+    p0_ad_groups = sum(1 for group in ad_groups if group.get("highest_priority") == "P0")
+    p1_ad_groups = sum(1 for group in ad_groups if group.get("highest_priority") == "P1")
+    listing_issue_count = sum(
+        1
+        for audit in listing_audits
+        if audit["issues"] and not audit["issues"][0].startswith("基础信息完整")
+    )
+    totals = {
+        "sku_count": len(sku_rows),
+        "sales": total_sales,
+        "ad_spend": total_ad_spend,
+        "profit": total_profit,
+        "tacos": total_ad_spend / total_sales if total_sales else None,
+        "margin": total_profit / total_sales if total_sales else None,
+        "p0_ad_groups": p0_ad_groups,
+        "p1_ad_groups": p1_ad_groups,
+        "listing_issue_count": listing_issue_count,
+    }
+
+    required_reports = [
+        ("business", "Business Report", "销量、Sessions、转化率，是判断放量和转化问题的底座。"),
+        ("advertised_products", "Advertised Product Report", "把广告花费落到 SKU/ASIN，识别广告拖累和可放量商品。"),
+        ("search_terms", "Search Term Report", "生成否定词、exact 加词和降价动作。"),
+        ("bulk_operations", "Bulk Operations", "同步广告活动状态，避免建议已经关闭的活动。"),
+        ("campaigns", "Campaign Report", "看活动预算、花费、ACOS 和预算是否限制放量。"),
+        ("targeting", "Targeting Report", "看 exact / phrase / broad / ASIN 定投的表现。"),
+        ("costs", "成本表", "计算真实利润，不然只能看销售额和广告效率。"),
+        ("inventory", "Inventory Report", "判断断货风险和库存压力。"),
+        ("listings", "Listing 表", "做标题、五点、图片资料的基础体检。"),
+    ]
+    data_health = []
+    for key, label, why in required_reports:
+        batch = latest_by_type.get(key)
+        data_health.append(
+            {
+                "key": key,
+                "label": label,
+                "ok": bool(batch),
+                "why": why,
+                "file_name": batch.file_name if batch else "",
+                "row_count": batch.row_count if batch else 0,
+                "created_at": batch.created_at if batch else None,
+            }
+        )
+
+    todos = []
+    for group in ad_groups[:16]:
+        p0_count = sum(1 for action in group["actions"] if action["priority"] == "P0")
+        p1_count = sum(1 for action in group["actions"] if action["priority"] == "P1")
+        if p0_count:
+            priority = "P0"
+            next_action = "先处理无转化浪费词：按活动名、广告组、搜索词在广告后台否定 exact；如果是 broad/auto 流量，先降 bid 20%-30%。"
+        else:
+            priority = "P1"
+            next_action = "把有订单且 ACOS 合理的词拆到 exact 活动，单独给预算和 bid，避免被 broad/auto 混在一起。"
+        todos.append(
+            {
+                "priority": priority,
+                "area": "广告",
+                "object": _short_object(group.get("asin"), group.get("sku")),
+                "evidence": f"{len(group['actions'])} 个广告动作，P0 {p0_count} 个，P1 {p1_count} 个，花费 ${group['total_spend']:.2f}，销售 ${group['total_sales']:.2f}。",
+                "next_action": next_action,
+                "href": "/operations/ad-actions",
+            }
+        )
+
+    for row in sku_rows:
+        label = _short_object(row.asin, row.sku)
+        if row.sales > 0 and row.margin is not None and row.margin < 0.15:
+            todos.append(
+                {
+                    "priority": "P0" if row.ad_spend >= 20 else "P1",
+                    "area": "利润",
+                    "object": label,
+                    "evidence": f"销售 ${row.sales:.2f}，预估利润 ${row.estimated_profit:.2f}，利润率 {(row.margin or 0) * 100:.1f}%。",
+                    "next_action": "先核对成本和售价；如果成本无误，压缩低效广告词，保留高转化词，并评估涨价或改多件装拉高客单价。",
+                    "href": "/operations/dashboard",
+                }
+            )
+        if row.sessions >= 100 and (row.conversion_rate or 0) < 0.05:
+            todos.append(
+                {
+                    "priority": "P1",
+                    "area": "转化",
+                    "object": label,
+                    "evidence": f"Sessions {row.sessions:.0f}，CVR {(row.conversion_rate or 0) * 100:.1f}%，流量够但转化偏低。",
+                    "next_action": "优先查主图、尺寸/兼容图、价格锚点、coupon、评论星级；广告先别盲目加预算，等转化修复后再放量。",
+                    "href": "/operations/dashboard",
+                }
+            )
+        if row.sales >= 50 and (row.margin or 0) >= 0.25 and (row.conversion_rate or 0) >= 0.12 and (row.tacos or 0) <= 0.18:
+            todos.append(
+                {
+                    "priority": "P1",
+                    "area": "放量",
+                    "object": label,
+                    "evidence": f"利润率 {(row.margin or 0) * 100:.1f}%，CVR {(row.conversion_rate or 0) * 100:.1f}%，TACOS {(row.tacos or 0) * 100:.1f}%。",
+                    "next_action": "复制高转化搜索词到 exact，预算小幅增加 20%-30%；同时测试 3-pack/5-pack 或数量折扣，提高广告承受能力。",
+                    "href": "/operations/dashboard",
+                }
+            )
+        if row.units >= 10 and (row.margin or 0) >= 0.25:
+            todos.append(
+                {
+                    "priority": "P2",
+                    "area": "客单价",
+                    "object": label,
+                    "evidence": f"销量 {row.units:.0f} 件，利润率 {(row.margin or 0) * 100:.1f}%，具备测试多件装条件。",
+                    "next_action": "做 3-pack/5-pack 小批量 FBM 测试，主图突出数量和适配场景；广告先用原 ASIN 高转化词小预算验证。",
+                    "href": "/operations/dashboard",
+                }
+            )
+
+    for audit in listing_audits[:20]:
+        listing = audit["listing"]
+        issues = [issue for issue in audit["issues"] if not issue.startswith("基础信息完整")]
+        if not issues:
+            continue
+        todos.append(
+            {
+                "priority": "P1",
+                "area": "Listing",
+                "object": _short_object(listing.asin, listing.sku),
+                "evidence": issues[0],
+                "next_action": "先补核心规格、适配词、replacement/compatible/pack 等高意图词，再检查五点是否覆盖尺寸、材质、用途和售后。",
+                "href": "/operations/listing-audit",
+            }
+        )
+
+    for item in data_health:
+        if item["ok"]:
+            continue
+        priority = "P0" if item["key"] in {"costs", "business", "advertised_products", "search_terms"} else "P2"
+        todos.append(
+            {
+                "priority": priority,
+                "area": "数据",
+                "object": item["label"],
+                "evidence": f"缺少 {item['label']}，{item['why']}",
+                "next_action": "补上传这个报表后再看对应模块，避免系统基于不完整信息给出偏差建议。",
+                "href": "/imports",
+            }
+        )
+
+    todos = sorted(todos, key=lambda item: (_priority_rank(item["priority"]), item["area"], item["object"]))[:40]
+    today_focus = []
+    seen_focus = set()
+    for item in todos:
+        object_root = item["object"].split("/")[0].strip()
+        focus_key = (item["area"], object_root or item["object"])
+        if focus_key in seen_focus:
+            continue
+        seen_focus.add(focus_key)
+        today_focus.append(item)
+        if len(today_focus) >= 5:
+            break
+    scale_candidates = [
+        row
+        for row in sku_rows
+        if row.sales >= 50 and (row.margin or 0) >= 0.25 and (row.conversion_rate or 0) >= 0.1
+    ][:8]
+    risk_skus = [
+        row
+        for row in sku_rows
+        if (row.sales > 0 and row.margin is not None and row.margin < 0.15)
+        or ((row.acos or 0) > 0.45 and row.ad_spend >= 20)
+        or (row.sessions >= 100 and (row.conversion_rate or 0) < 0.05)
+    ][:8]
+
+    return {
+        "totals": totals,
+        "todos": todos,
+        "today_focus": today_focus,
+        "data_health": data_health,
+        "scale_candidates": scale_candidates,
+        "risk_skus": risk_skus,
+        "ad_groups": ad_groups[:5],
+    }
+
+
 def build_listing_audits(db: Session) -> list[dict]:
     listings = db.execute(select(ListingItem).order_by(desc(ListingItem.created_at))).scalars().all()
     audits = []

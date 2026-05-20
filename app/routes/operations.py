@@ -13,6 +13,7 @@ from app.report_importer import (
     build_ad_actions,
     build_business_overview,
     build_listing_audits,
+    build_operations_cockpit,
     build_sku_dashboard,
     count_batches,
     import_report,
@@ -125,6 +126,14 @@ def sku_dashboard(
     return templates.TemplateResponse(
         "sku_dashboard.html",
         {"request": request, "rows": page_rows, "totals": totals, "pagination": pagination},
+    )
+
+
+@router.get("/operations/action-center")
+def action_center(request: Request, db: Session = Depends(get_db)):
+    return templates.TemplateResponse(
+        "action_center.html",
+        {"request": request, **build_operations_cockpit(db)},
     )
 
 

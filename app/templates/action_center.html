@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+  <div class="section-heading">
+    <div>
+      <h1>运营驾驶舱</h1>
+      <p class="muted">把业务、广告、成本、库存和 Listing 汇总成今天该处理的动作。优先看 P0，再看 P1。</p>
+    </div>
+    <a class="button ghost" href="/operations/ai-advisor">生成 AI 深度建议</a>
+  </div>
+  <div class="metrics">
+    <span>SKU {{ totals.sku_count }}</span>
+    <span>销售额 ${{ "%.2f"|format(totals.sales) }}</span>
+    <span>预估利润 ${{ "%.2f"|format(totals.profit) }}</span>
+    <span>广告花费 ${{ "%.2f"|format(totals.ad_spend) }}</span>
+    <span>TACOS {{ "%.1f%%"|format((totals.tacos or 0) * 100) }}</span>
+    <span>利润率 {{ "%.1f%%"|format((totals.margin or 0) * 100) }}</span>
+    <span>P0 广告组 {{ totals.p0_ad_groups }}</span>
+    <span>Listing 问题 {{ totals.listing_issue_count }}</span>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="section-heading">
+    <h2>今天先做这 5 件事</h2>
+    <span class="muted">按止损、利润、放量影响排序</span>
+  </div>
+  {% if today_focus %}
+  <div class="grid-list">
+    {% for item in today_focus %}
+    <article class="mini-card action-card">
+      <div class="section-heading">
+        <div>
+          <span class="badge decision">{{ item.priority }}</span>
+          <strong>{{ item.area }} · {{ item.object }}</strong>
+        </div>
+        <a class="button ghost" href="{{ item.href }}">去处理</a>
+      </div>
+      <p><strong>依据：</strong>{{ item.evidence }}</p>
+      <p><strong>动作：</strong>{{ item.next_action }}</p>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty">暂时没有可执行动作。请先上传 Business、广告和成本相关报表。</div>
+  {% endif %}
+</section>
+
+<section class="columns">
+  <div class="panel">
+    <h2>放量候选</h2>
+    {% if scale_candidates %}
+    <table>
+      <thead>
+        <tr><th>SKU / ASIN</th><th>利润</th><th>转化</th><th>建议</th></tr>
+      </thead>
+      <tbody>
+        {% for row in scale_candidates %}
+        <tr>
+          <td>
+            <strong>{{ row.sku }}</strong><br>
+            <span class="muted">{{ row.asin }}</span><br>
+            {{ row.title[:70] }}
+          </td>
+          <td>
+            销售 ${{ "%.2f"|format(row.sales) }}<br>
+            利润 ${{ "%.2f"|format(row.estimated_profit) }}<br>
+            利润率 {{ "%.1f%%"|format((row.margin or 0) * 100) }}
+          </td>
+          <td>
+            CVR {{ "%.1f%%"|format((row.conversion_rate or 0) * 100) }}<br>
+            TACOS {{ "%.1f%%"|format((row.tacos or 0) * 100) }}
+          </td>
+          <td>加 exact 预算，测 3-pack/5-pack，观察 7 天利润和 CVR。</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">还没有同时满足高利润和高转化的明显放量候选。</p>
+    {% endif %}
+  </div>
+
+  <div class="panel">
+    <h2>风险 SKU</h2>
+    {% if risk_skus %}
+    <table>
+      <thead>
+        <tr><th>SKU / ASIN</th><th>风险数据</th><th>建议</th></tr>
+      </thead>
+      <tbody>
+        {% for row in risk_skus %}
+        <tr>
+          <td>
+            <strong>{{ row.sku }}</strong><br>
+            <span class="muted">{{ row.asin }}</span><br>
+            {{ row.title[:70] }}
+          </td>
+          <td>
+            利润率 {{ "%.1f%%"|format((row.margin or 0) * 100) }}<br>
+            ACOS {{ "%.1f%%"|format((row.acos or 0) * 100) }}<br>
+            CVR {{ "%.1f%%"|format((row.conversion_rate or 0) * 100) }}
+          </td>
+          <td>先止损低效词，再查成本、售价、主图和适配说明。</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">暂时没有明显亏损、低转化或高 ACOS 风险。</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="columns">
+  <div class="panel">
+    <h2>广告止损 ASIN</h2>
+    {% if ad_groups %}
+    <div class="grid-list">
+      {% for group in ad_groups %}
+      <article class="mini-card">
+        <div class="section-heading">
+          <strong>{{ group.asin or "未关联 ASIN" }}</strong>
+          <span class="badge decision">{{ group.highest_priority }}</span>
+        </div>
+        <p class="muted">SKU：{{ group.sku or "-" }}</p>
+        <p>动作 {{ group.actions|length }} 个，花费 ${{ "%.2f"|format(group.total_spend) }}，销售 ${{ "%.2f"|format(group.total_sales) }}，ACOS {{ "%.1f%%"|format((group.acos or 0) * 100) }}</p>
+        <a href="/operations/ad-actions">查看活动、广告组和搜索词</a>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">暂无广告动作。需要 Search Term Report 和 Advertised Product Report。</p>
+    {% endif %}
+  </div>
+
+  <div class="panel">
+    <h2>数据健康</h2>
+    <div class="grid-list">
+      {% for item in data_health %}
+      <article class="mini-card">
+        <div class="section-heading">
+          <strong>{{ item.label }}</strong>
+          {% if item.ok %}
+          <span class="badge success">已上传</span>
+          {% else %}
+          <span class="badge failed">缺失</span>
+          {% endif %}
+        </div>
+        <p class="muted">{{ item.why }}</p>
+        {% if item.ok %}
+        <p>{{ item.file_name }} · {{ item.row_count }} 行 · {{ item.created_at.strftime("%Y-%m-%d %H:%M") }}</p>
+        {% else %}
+        <p>缺这个报表时，对应建议会偏保守。</p>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="section-heading">
+    <h2>全部动作清单</h2>
+    <span class="muted">共 {{ todos|length }} 条</span>
+  </div>
+  {% if todos %}
+  <table>
+    <thead>
+      <tr>
+        <th>优先级</th>
+        <th>模块</th>
+        <th>对象</th>
+        <th>依据</th>
+        <th>下一步</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in todos %}
+      <tr>
+        <td><span class="badge decision">{{ item.priority }}</span></td>
+        <td>{{ item.area }}</td>
+        <td><strong>{{ item.object }}</strong></td>
+        <td>{{ item.evidence }}</td>
+        <td>{{ item.next_action }}<br><a href="{{ item.href }}">打开相关页面</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">暂无动作。</div>
+  {% endif %}
+</section>
+{% endblock %}
