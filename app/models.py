@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import List, Optional
 
@@ -164,6 +165,13 @@ class AdRecommendation(Base):
     error_message: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+    @property
+    def traffic_type(self) -> str:
+        search_term = (self.search_term or "").strip().upper()
+        if re.fullmatch(r"B0[A-Z0-9]{8,10}", search_term):
+            return "ASIN Product Target"
+        return "Keyword Search Term"
 
 
 class BusinessMetric(Base):

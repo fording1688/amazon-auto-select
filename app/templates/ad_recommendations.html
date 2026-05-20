@@ -71,6 +71,7 @@
       <tr>
         <td>
           <strong>{{ recommendation_labels.get(row.recommendation_type, row.recommendation_type) }}</strong><br>
+          <span class="badge">{{ row.traffic_type }}</span><br>
           <span class="muted">{{ row.match_type or "-" }}</span>
         </td>
         <td>

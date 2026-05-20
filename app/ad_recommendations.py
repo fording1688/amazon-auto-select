@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import defaultdict
 from datetime import datetime
 from typing import Any
@@ -16,6 +17,7 @@ from app.report_importer import _raw_text
 RECOMMENDATION_LABELS = {
     "add_exact": "加入 exact",
     "add_exact_boost": "加入 exact 并适度提高预算/出价",
+    "add_product_targeting_asin": "加入 ASIN 商品投放",
     "add_phrase_test": "phrase/exact 小预算测试",
     "negative_exact": "否定精准",
     "negative_or_lower_bid": "否定词或降低出价",
@@ -43,6 +45,11 @@ def _safe_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def is_asin_search_term(value: str | None) -> bool:
+    search_term = (value or "").strip().upper()
+    return bool(re.fullmatch(r"B0[A-Z0-9]{8,10}", search_term))
 
 
 def _avg_bid_for(db: Session, campaign_name: str, ad_group_name: str, targeting: str) -> float | None:
@@ -120,9 +127,11 @@ def _reference_maps(db: Session) -> tuple[dict[tuple[str, str, str], float], dic
 
 def _suggested_bid(current_bid: float | None, recommendation_type: str) -> float | None:
     if not current_bid:
-        if recommendation_type in {"add_exact", "add_exact_boost", "add_phrase_test"}:
+        if recommendation_type in {"add_exact", "add_exact_boost", "add_phrase_test", "add_product_targeting_asin"}:
             return 0.75
         return None
+    if recommendation_type == "add_product_targeting_asin":
+        return round(current_bid * 1.1, 2)
     if recommendation_type == "add_exact_boost":
         return round(current_bid * 1.15, 2)
     if recommendation_type == "lower_bid":
@@ -133,6 +142,8 @@ def _suggested_bid(current_bid: float | None, recommendation_type: str) -> float
 
 
 def _suggested_budget(current_budget: float | None, recommendation_type: str, clicks: float) -> float | None:
+    if recommendation_type == "add_product_targeting_asin":
+        return 10.0
     if recommendation_type not in {"increase_budget", "add_exact_boost"}:
         return None
     if not current_budget:
@@ -145,6 +156,7 @@ def _execution_action(recommendation_type: str) -> str:
     return {
         "add_exact": "add_keyword_to_exact_campaign",
         "add_exact_boost": "add_keyword_to_exact_campaign",
+        "add_product_targeting_asin": "add_asin_to_product_targeting_campaign",
         "add_phrase_test": "add_keyword_small_budget_test",
         "negative_exact": "add_negative_exact_keyword",
         "negative_or_lower_bid": "add_negative_or_lower_bid",
@@ -156,18 +168,28 @@ def _execution_action(recommendation_type: str) -> str:
 def _target_campaign(campaign_name: str, recommendation_type: str) -> str:
     if recommendation_type in {"add_exact", "add_exact_boost"}:
         return f"{campaign_name} - Exact"
+    if recommendation_type == "add_product_targeting_asin":
+        return f"{campaign_name} - Product Targeting"
     if recommendation_type == "add_phrase_test":
         return f"{campaign_name} - Phrase Test"
     return campaign_name
 
 
 def build_execution_plan(recommendation: AdRecommendation) -> dict[str, Any]:
+    target_ad_group = recommendation.ad_group_name or "Exact - Core Terms"
+    if recommendation.recommendation_type == "add_product_targeting_asin":
+        target_ad_group = "Product Targeting - ASIN Test"
     return {
         "action": _execution_action(recommendation.recommendation_type),
         "search_term": recommendation.search_term,
         "target_campaign": _target_campaign(recommendation.campaign_name or "", recommendation.recommendation_type),
-        "target_ad_group": recommendation.ad_group_name or "Exact - Core Terms",
-        "match_type": "exact" if recommendation.recommendation_type != "add_phrase_test" else "phrase",
+        "target_ad_group": target_ad_group,
+        "match_type": (
+            "asin_product_targeting"
+            if recommendation.recommendation_type == "add_product_targeting_asin"
+            else ("phrase" if recommendation.recommendation_type == "add_phrase_test" else "exact")
+        ),
+        "target_asin": recommendation.search_term if recommendation.recommendation_type == "add_product_targeting_asin" else None,
         "suggested_bid": recommendation.suggested_bid,
         "suggested_daily_budget": recommendation.suggested_budget,
         "note": recommendation.reason,
@@ -239,6 +261,31 @@ def _candidate_recommendations(db: Session) -> list[dict[str, Any]]:
                 }
             )
 
+        is_asin_term = is_asin_search_term(item["search_term"])
+        if is_asin_term:
+            if orders >= 1 and acos is not None and acos <= 0.20:
+                add(
+                    "add_product_targeting_asin",
+                    "该 ASIN 来自 substitutes 商品投放，已有订单且 ACOS 较低，建议将该 ASIN 单独加入手动 Product Targeting 活动进行测试。初始预算 $5-$10/天，竞价参考建议竞价或略高 10%，先观察 3-5 天。不建议立即在原自动广告中否定该 ASIN。",
+                    f"该搜索词识别为 ASIN Product Target，订单 {orders:.0f}，ACOS {_pct(acos)}；不能作为 keyword exact 添加。",
+                    "medium",
+                )
+            elif acos is not None and acos > 0.50 and orders > 0:
+                add(
+                    "lower_bid",
+                    "降低商品投放出价 10%-20%，继续观察",
+                    f"该搜索词识别为 ASIN Product Target，已有订单但 ACOS {_pct(acos)} 偏高；先降商品投放 bid，不直接关闭。",
+                    "medium",
+                )
+            elif orders == 0 and (clicks >= 15 or spend >= settings.default_ad_test_cost):
+                add(
+                    "negative_or_lower_bid",
+                    "降低商品投放出价，确认无关后再考虑否定 ASIN",
+                    f"该搜索词识别为 ASIN Product Target，点击 {clicks:.0f}、花费 ${spend:.2f} 但无订单；先谨慎降 bid，不建议误加 keyword 否定。",
+                    "medium",
+                )
+            continue
+
         if orders >= 2 and acos is not None and acos <= 0.10:
             add(
                 "add_exact_boost",
@@ -294,6 +341,21 @@ def _candidate_recommendations(db: Session) -> list[dict[str, Any]]:
 def generate_ad_recommendations(db: Session) -> int:
     created_or_updated = 0
     candidates = _candidate_recommendations(db)
+    wrong_keyword_rows = (
+        db.execute(
+            select(AdRecommendation)
+            .where(AdRecommendation.status.in_(["pending", "approved"]))
+            .where(AdRecommendation.recommendation_type.in_(["add_exact", "add_exact_boost", "add_phrase_test"]))
+        )
+        .scalars()
+        .all()
+    )
+    for row in wrong_keyword_rows:
+        if is_asin_search_term(row.search_term):
+            row.status = "rejected"
+            row.execution_plan_json = None
+            row.reason = f"{row.reason or ''} 系统已纠正：该搜索词是 ASIN Product Target，不能作为 keyword exact/phrase 添加。".strip()
+            row.updated_at = datetime.utcnow()
     existing_rows = (
         db.execute(select(AdRecommendation).where(AdRecommendation.status.in_(["pending", "approved"])))
         .scalars()
