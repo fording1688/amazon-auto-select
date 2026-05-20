@@ -11,6 +11,10 @@
     {{ report_types.get(upload_result.report_type, upload_result.report_type) }}，
     {{ upload_result.row_count }} 行，
     状态 {{ upload_result.status }}。
+    {% if upload_result.generated_ad_recommendations is not none %}
+      已生成/更新广告建议 {{ upload_result.generated_ad_recommendations }} 条。
+      <a href="/ad-recommendations">查看广告建议</a>
+    {% endif %}
     {% if upload_result.error_message %}<span>{{ upload_result.error_message }}</span>{% endif %}
   </div>
   {% endif %}
@@ -25,6 +29,10 @@
       本次处理 {{ scan_summary.processed_count }} 个文件，
       成功 {{ scan_summary.success_count }} 个，
       失败 {{ scan_summary.failed_count }} 个。成功文件已归档到 imported，失败文件已归档到 failed。
+      {% if scan_summary.generated_ad_recommendations is not none %}
+        已生成/更新广告建议 {{ scan_summary.generated_ad_recommendations }} 条。
+        <a href="/ad-recommendations">查看广告建议</a>
+      {% endif %}
     {% endif %}
   </div>
   {% endif %}
@@ -53,6 +61,7 @@
   <div class="metrics">
     <a class="button ghost" href="/operations/business-overview">查看业务总览</a>
     <a class="button ghost" href="/operations/dashboard">查看 SKU 利润看板</a>
+    <a class="button ghost" href="/ad-recommendations">查看广告建议</a>
     <a class="button ghost" href="/operations/ad-actions">查看广告动作</a>
     <a class="button ghost" href="/operations/ai-advisor">生成 AI 运营建议</a>
     <a class="button ghost" href="/operations/listing-audit">查看 Listing 体检</a>

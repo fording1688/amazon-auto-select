@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+  <div class="section-heading">
+    <div>
+      <h1>广告优化建议</h1>
+      <p class="muted">安全模式：系统只生成建议，不会自动修改亚马逊广告后台。点击“确认执行”后也只是生成执行计划，第一版不调用真实 API。</p>
+    </div>
+    <form method="post" action="/ad-recommendations/generate">
+      <button type="submit">重新生成建议</button>
+    </form>
+  </div>
+  <div class="notice">
+    默认不自动执行；必须人工确认；后续即使接入 Amazon Ads API，也要求 <code>AMAZON_ADS_API_ENABLED=true</code> 且状态为 approved。预算和出价提高都限制在 20% 内。
+  </div>
+  {% if generated_count %}
+  <div class="alert success">已生成/更新广告建议 {{ generated_count }} 条。</div>
+  {% endif %}
+  {% if message %}
+  <div class="alert success">操作完成：{{ message }}</div>
+  {% endif %}
+  {% if error %}
+  <div class="alert error">{{ error }}</div>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>筛选</h2>
+  <form class="inline-form" method="get" action="/ad-recommendations">
+    <select name="status">
+      <option value="" {{ "selected" if not status else "" }}>全部状态</option>
+      {% for value, label in status_labels.items() %}
+      <option value="{{ value }}" {{ "selected" if status == value else "" }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <select name="recommendation_type">
+      <option value="" {{ "selected" if not recommendation_type else "" }}>全部建议类型</option>
+      {% for value, label in recommendation_labels.items() %}
+      <option value="{{ value }}" {{ "selected" if recommendation_type == value else "" }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <input type="number" step="0.01" min="0" name="acos_max" placeholder="ACOS 上限，如 0.2" value="{{ acos_max if acos_max is not none else '' }}">
+    <label><input type="checkbox" name="orders_positive" value="true" {{ "checked" if orders_positive else "" }}> orders &gt; 0</label>
+    <label><input type="checkbox" name="spend_positive" value="true" {{ "checked" if spend_positive else "" }}> spend &gt; 0</label>
+    <button type="submit">筛选</button>
+    <a class="button ghost" href="/ad-recommendations">重置</a>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="section-heading">
+    <h2>建议列表</h2>
+    <span class="muted">共 {{ pagination.total }} 条，每页 {{ pagination.per_page }} 条</span>
+  </div>
+  {% if rows %}
+  <table>
+    <thead>
+      <tr>
+        <th>建议类型</th>
+        <th>搜索词 / 定位</th>
+        <th>Campaign / Ad Group</th>
+        <th>数据</th>
+        <th>建议动作</th>
+        <th>原因</th>
+        <th>风险/状态</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>
+          <strong>{{ recommendation_labels.get(row.recommendation_type, row.recommendation_type) }}</strong><br>
+          <span class="muted">{{ row.match_type or "-" }}</span>
+        </td>
+        <td>
+          <strong>{{ row.search_term }}</strong><br>
+          <span class="muted">Targeting: {{ row.targeting or "-" }}</span>
+        </td>
+        <td>
+          {{ row.campaign_name or "-" }}<br>
+          <span class="muted">{{ row.ad_group_name or "-" }}</span>
+        </td>
+        <td>
+          点击 {{ "%.0f"|format(row.clicks or 0) }}<br>
+          花费 ${{ "%.2f"|format(row.spend or 0) }}<br>
+          销售 ${{ "%.2f"|format(row.sales or 0) }}<br>
+          订单 {{ "%.0f"|format(row.orders or 0) }}<br>
+          ACOS {{ "%.1f%%"|format((row.acos or 0) * 100) }}
+        </td>
+        <td>
+          {{ row.recommendation_text }}<br>
+          {% if row.suggested_bid %}<span class="muted">建议 bid：${{ "%.2f"|format(row.suggested_bid) }}</span><br>{% endif %}
+          {% if row.suggested_budget %}<span class="muted">建议预算：${{ "%.2f"|format(row.suggested_budget) }}</span>{% endif %}
+        </td>
+        <td>{{ row.reason }}</td>
+        <td>
+          <span class="badge decision">{{ row.risk_level }}</span><br>
+          <span class="badge {{ row.status }}">{{ status_labels.get(row.status, row.status) }}</span>
+          {% if row.execution_plan_json %}
+          <details>
+            <summary>执行计划</summary>
+            <pre>{{ row.execution_plan_json }}</pre>
+          </details>
+          {% endif %}
+        </td>
+        <td>
+          <div class="actions stacked-actions">
+            {% if row.status == "pending" %}
+            <form method="post" action="/ad-recommendations/{{ row.id }}/approve">
+              <button type="submit">确认执行</button>
+            </form>
+            <form method="post" action="/ad-recommendations/{{ row.id }}/reject">
+              <button class="danger" type="submit">拒绝</button>
+            </form>
+            {% endif %}
+            {% if row.status in ["pending", "approved"] %}
+            <form method="post" action="/ad-recommendations/{{ row.id }}/manual">
+              <button class="button ghost" type="submit">标记已手动处理</button>
+            </form>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div class="pagination">
+    {% if pagination.has_prev %}
+    <a class="button ghost" href="{{ pagination.base_url }}{{ pagination.separator }}page={{ pagination.prev_page }}">上一页</a>
+    {% else %}
+    <span class="button ghost disabled">上一页</span>
+    {% endif %}
+    <span>第 {{ pagination.page }} / {{ pagination.total_pages }} 页</span>
+    {% if pagination.has_next %}
+    <a class="button ghost" href="{{ pagination.base_url }}{{ pagination.separator }}page={{ pagination.next_page }}">下一页</a>
+    {% else %}
+    <span class="button ghost disabled">下一页</span>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="empty">暂无广告建议。请先上传 Search Term Report，或点击“重新生成建议”。</div>
+  {% endif %}
+</section>
+{% endblock %}

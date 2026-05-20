@@ -1,9 +1,23 @@
 from __future__ import annotations
 
+from typing import Optional
+from urllib.parse import quote
+
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
+from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
+from app.ad_recommendations import (
+    RECOMMENDATION_LABELS,
+    STATUS_LABELS,
+    approve_recommendation,
+    count_recommendations,
+    generate_ad_recommendations,
+    list_recommendations,
+    mark_manual_recommendation,
+    reject_recommendation,
+)
 from app.database import get_db
 from app.operations_ai import generate_operations_ai_report, latest_operations_ai_report, report_to_view
 from app.pagination import build_pagination, paginate_list
@@ -26,6 +40,7 @@ from app.report_importer import (
 
 router = APIRouter(tags=["operations"])
 templates = Jinja2Templates(directory="app/templates")
+AD_REPORT_TYPES = {"search_terms", "advertised_products", "campaigns", "targeting", "bulk_operations"}
 
 
 def _pending_inbox_files() -> list[str]:
@@ -73,6 +88,9 @@ async def upload_report(
 ):
     content = await file.read()
     batch = import_report(db, report_type, file.filename or "uploaded_file", content)
+    generated_count = None
+    if batch.status == "success" and report_type in AD_REPORT_TYPES:
+        generated_count = generate_ad_recommendations(db)
     return templates.TemplateResponse(
         "imports.html",
         _imports_context(
@@ -84,6 +102,7 @@ async def upload_report(
                 "status": batch.status,
                 "row_count": batch.row_count,
                 "error_message": batch.error_message,
+                "generated_ad_recommendations": generated_count,
             },
         ),
     )
@@ -95,16 +114,110 @@ def scan_report_inbox(request: Request, db: Session = Depends(get_db)):
     results = scan_inbox(db)
     success_count = sum(1 for item in results if item["status"] == "success")
     failed_count = sum(1 for item in results if item["status"] == "failed")
+    generated_count = None
+    if any(item["status"] == "success" and item["report_type"] in AD_REPORT_TYPES for item in results):
+        generated_count = generate_ad_recommendations(db)
     summary = {
         "before_count": len(before_files),
         "processed_count": len(results),
         "success_count": success_count,
         "failed_count": failed_count,
+        "generated_ad_recommendations": generated_count,
     }
     return templates.TemplateResponse(
         "imports.html",
         _imports_context(request, db, scan_results=results, scan_summary=summary),
     )
+
+
+@router.get("/ad-recommendations")
+def ad_recommendations_page(
+    request: Request,
+    page: int = Query(1, ge=1),
+    status: str = Query("pending"),
+    recommendation_type: str = Query(""),
+    acos_max: Optional[float] = Query(None),
+    orders_positive: bool = Query(False),
+    spend_positive: bool = Query(False),
+    db: Session = Depends(get_db),
+):
+    status_filter = status or None
+    type_filter = recommendation_type or None
+    total = count_recommendations(db, status_filter, type_filter, acos_max, orders_positive, spend_positive)
+    query_parts = []
+    if status:
+        query_parts.append(f"status={status}")
+    if recommendation_type:
+        query_parts.append(f"recommendation_type={recommendation_type}")
+    if acos_max is not None:
+        query_parts.append(f"acos_max={acos_max}")
+    if orders_positive:
+        query_parts.append("orders_positive=true")
+    if spend_positive:
+        query_parts.append("spend_positive=true")
+    base_url = "/ad-recommendations" + (f"?{'&'.join(query_parts)}" if query_parts else "")
+    pagination = build_pagination(total, page, 20, base_url)
+    rows = list_recommendations(
+        db,
+        limit=pagination.per_page,
+        offset=(pagination.page - 1) * pagination.per_page,
+        status=status_filter,
+        recommendation_type=type_filter,
+        acos_max=acos_max,
+        orders_positive=orders_positive,
+        spend_positive=spend_positive,
+    )
+    return templates.TemplateResponse(
+        "ad_recommendations.html",
+        {
+            "request": request,
+            "rows": rows,
+            "pagination": pagination,
+            "status": status,
+            "recommendation_type": recommendation_type,
+            "acos_max": acos_max,
+            "orders_positive": orders_positive,
+            "spend_positive": spend_positive,
+            "recommendation_labels": RECOMMENDATION_LABELS,
+            "status_labels": STATUS_LABELS,
+            "generated_count": request.query_params.get("generated"),
+            "message": request.query_params.get("message", ""),
+            "error": request.query_params.get("error", ""),
+        },
+    )
+
+
+@router.post("/ad-recommendations/generate")
+def generate_recommendations_now(db: Session = Depends(get_db)):
+    count = generate_ad_recommendations(db)
+    return RedirectResponse(f"/ad-recommendations?status=pending&generated={count}", status_code=303)
+
+
+@router.post("/ad-recommendations/{recommendation_id}/approve")
+def approve_ad_recommendation(recommendation_id: int, db: Session = Depends(get_db)):
+    try:
+        approve_recommendation(db, recommendation_id)
+        return RedirectResponse("/ad-recommendations?status=approved&message=approved", status_code=303)
+    except ValueError as exc:
+        return RedirectResponse(f"/ad-recommendations?error={quote(str(exc))}", status_code=303)
+
+
+@router.post("/ad-recommendations/{recommendation_id}/reject")
+def reject_ad_recommendation(recommendation_id: int, db: Session = Depends(get_db)):
+    try:
+        reject_recommendation(db, recommendation_id)
+        return RedirectResponse("/ad-recommendations?status=rejected&message=rejected", status_code=303)
+    except ValueError as exc:
+        return RedirectResponse(f"/ad-recommendations?error={quote(str(exc))}", status_code=303)
+
+
+@router.post("/ad-recommendations/{recommendation_id}/manual")
+def mark_ad_recommendation_manual(recommendation_id: int, db: Session = Depends(get_db)):
+    try:
+        mark_manual_recommendation(db, recommendation_id)
+        return RedirectResponse("/ad-recommendations?status=executed&message=manual", status_code=303)
+    except ValueError as exc:
+        return RedirectResponse(f"/ad-recommendations?error={quote(str(exc))}", status_code=303)
 
 
 @router.get("/operations/dashboard")

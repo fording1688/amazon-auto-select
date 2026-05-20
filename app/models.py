@@ -138,6 +138,34 @@ class OperationsAiReport(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
 
 
+class AdRecommendation(Base):
+    __tablename__ = "ad_recommendations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    campaign_name: Mapped[Optional[str]] = mapped_column(String(255), index=True)
+    ad_group_name: Mapped[Optional[str]] = mapped_column(String(255), index=True)
+    search_term: Mapped[Optional[str]] = mapped_column(Text, index=True)
+    targeting: Mapped[Optional[str]] = mapped_column(Text)
+    match_type: Mapped[Optional[str]] = mapped_column(String(80))
+    recommendation_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    recommendation_text: Mapped[str] = mapped_column(Text, nullable=False)
+    reason: Mapped[Optional[str]] = mapped_column(Text)
+    clicks: Mapped[Optional[float]] = mapped_column(Float)
+    spend: Mapped[Optional[float]] = mapped_column(Float)
+    sales: Mapped[Optional[float]] = mapped_column(Float)
+    orders: Mapped[Optional[float]] = mapped_column(Float)
+    acos: Mapped[Optional[float]] = mapped_column(Float)
+    suggested_bid: Mapped[Optional[float]] = mapped_column(Float)
+    suggested_budget: Mapped[Optional[float]] = mapped_column(Float)
+    risk_level: Mapped[str] = mapped_column(String(30), default="low", index=True)
+    status: Mapped[str] = mapped_column(String(30), default="pending", index=True)
+    execution_plan_json: Mapped[Optional[str]] = mapped_column(Text)
+    api_response_json: Mapped[Optional[str]] = mapped_column(Text)
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+
 class BusinessMetric(Base):
     __tablename__ = "business_metrics"
 

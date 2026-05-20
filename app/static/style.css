@@ -111,6 +111,11 @@ td {
   gap: 8px;
 }
 
+.stacked-actions {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
 .badge {
   background: #eef2ff;
   border-radius: 999px;

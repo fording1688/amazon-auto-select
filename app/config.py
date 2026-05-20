@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./amazon_test.db"
     daily_run_hour: int = 8
     openai_model: str = "gpt-4o-mini"
+    amazon_ads_api_enabled: bool = False
+    default_ad_test_cost: float = 15.0
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

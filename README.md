@@ -40,6 +40,8 @@ OPENAI_BASE_URL=
 OPENROUTER_HTTP_REFERER=
 OPENROUTER_APP_NAME=amazon-auto-select
 AMAZON_API_PROVIDER=mock
+AMAZON_ADS_API_ENABLED=false
+DEFAULT_AD_TEST_COST=15
 SERPAPI_KEY=
 RAINFOREST_API_KEY=
 KEEPA_API_KEY=
@@ -61,6 +63,26 @@ OPENAI_MODEL=gpt-4o-mini
 - `/products`：产品分析列表，支持按关键词和决策筛选。
 - `/reports/product/{product_id}`：产品详情和 AI 分析报告。
 - `/tasks`：手动运行任务和查看任务记录。
+- `/imports`：上传运营和广告报表，支持 Search Term、Advertised Product、Campaign、Targeting、Bulk Operations 等。
+- `/ad-recommendations`：广告优化建议安全模式。系统只生成建议，用户点击“确认执行”后只生成 `execution_plan_json`，第一版不会调用真实 Amazon Ads API。
+
+## 广告建议安全模式
+
+第一阶段默认不修改亚马逊广告后台。流程是：
+
+1. 上传 Search Term Report、Advertised Product Report、Campaign Report、Targeting Report。
+2. 系统根据订单、ACOS、点击、花费和预算状态生成 `pending` 建议。
+3. 用户在 `/ad-recommendations` 点击“确认执行”。
+4. 系统把建议改成 `approved`，并保存 `execution_plan_json`。
+5. 第一版到此为止，不调用真实 Ads API。
+
+后续接入真实 Amazon Ads API 时，仍然必须满足：
+
+- `AMAZON_ADS_API_ENABLED=true`
+- 建议状态为 `approved`
+- 已经保存 `execution_plan_json`
+- 单次批量执行不超过 20 条
+- 预算和出价提高都不得超过 20%
 
 ## 后续接真实 Amazon API
 
