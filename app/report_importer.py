@@ -667,15 +667,65 @@ def _sku_tags_and_recommendations(
 
 def build_ad_actions(db: Session) -> list[dict]:
     rows = db.execute(select(SearchTermMetric).order_by(desc(SearchTermMetric.spend))).scalars().all()
+    advertised_rows = db.execute(select(AdvertisedProductMetric)).scalars().all()
+    listings = db.execute(select(ListingItem).order_by(desc(ListingItem.created_at))).scalars().all()
+    business_rows = db.execute(select(BusinessMetric).order_by(desc(BusinessMetric.created_at))).scalars().all()
+
+    title_by_key = {}
+    for item in [*listings, *business_rows]:
+        for key in [getattr(item, "sku", None), getattr(item, "asin", None)]:
+            if key and key not in title_by_key:
+                title_by_key[key] = getattr(item, "title", None) or getattr(item, "product_name", None) or ""
+
+    ad_candidates_by_pair: dict[tuple[str, str], dict[tuple[str, str], dict]] = defaultdict(dict)
+    ad_candidates_by_campaign: dict[str, dict[tuple[str, str], dict]] = defaultdict(dict)
+    for ad in advertised_rows:
+        campaign = ad.campaign_name or ""
+        ad_group = _raw_text(ad, "Ad Group Name", "广告组名称")
+        sku = ad.sku or ""
+        asin = ad.asin or ""
+        if not (campaign or ad_group or sku or asin):
+            continue
+        key = (asin, sku)
+        candidate = {
+            "asin": asin,
+            "sku": sku,
+            "title": title_by_key.get(sku) or title_by_key.get(asin) or "",
+            "ad_group": ad_group,
+            "campaign": campaign,
+        }
+        ad_candidates_by_pair[(campaign, ad_group)][key] = candidate
+        ad_candidates_by_campaign[campaign][key] = candidate
+
     actions = []
+    merged_rows: dict[tuple[str, str, str, str, str], dict] = defaultdict(lambda: defaultdict(float))
     for row in rows:
-        clicks = row.clicks or 0
-        spend = row.spend or 0
-        sales = row.sales or 0
-        orders = row.orders or 0
-        impressions = row.impressions or 0
+        campaign = row.campaign_name or ""
+        ad_group = row.ad_group_name or ""
+        targeting = row.targeting or ""
+        search_term = row.search_term or row.targeting or ""
+        match_type = _raw_text(row, "匹配类型", "Match Type")
+        key = (campaign, ad_group, targeting, search_term, match_type)
+        merged = merged_rows[key]
+        merged["campaign"] = campaign
+        merged["ad_group"] = ad_group
+        merged["targeting"] = targeting
+        merged["search_term"] = search_term
+        merged["match_type"] = match_type
+        merged["clicks"] += row.clicks or 0
+        merged["spend"] += row.spend or 0
+        merged["sales"] += row.sales or 0
+        merged["orders"] += row.orders or 0
+        merged["impressions"] += row.impressions or 0
+
+    for row in merged_rows.values():
+        clicks = row["clicks"]
+        spend = row["spend"]
+        sales = row["sales"]
+        orders = row["orders"]
+        impressions = row["impressions"]
         ctr = clicks / impressions if impressions else None
-        acos = row.acos if row.acos is not None else (spend / sales if sales else None)
+        acos = spend / sales if sales else None
         priority = None
         action = None
         reason = None
@@ -696,13 +746,28 @@ def build_ad_actions(db: Session) -> list[dict]:
             action = "检查主图/标题相关性或降低出价"
             reason = "曝光高但点击率低。"
         if priority:
+            campaign = row["campaign"]
+            ad_group = row["ad_group"]
+            candidates = list(ad_candidates_by_pair.get((campaign, ad_group), {}).values())
+            match_type = "campaign+ad_group"
+            if not candidates:
+                candidates = list(ad_candidates_by_campaign.get(campaign, {}).values())
+                match_type = "campaign"
+            if not candidates:
+                candidates = [{"asin": "", "sku": "", "title": "", "campaign": campaign, "ad_group": ad_group}]
+                match_type = "unmatched"
             actions.append(
                 {
                     "priority": priority,
                     "action": action,
                     "reason": reason,
-                    "search_term": row.search_term or row.targeting or "",
-                    "campaign": row.campaign_name or "",
+                    "search_term": row["search_term"],
+                    "targeting": row["targeting"],
+                    "match_type": row["match_type"],
+                    "campaign": campaign,
+                    "ad_group": ad_group,
+                    "linked_products": candidates,
+                    "link_method": match_type,
                     "clicks": clicks,
                     "spend": spend,
                     "sales": sales,
@@ -712,6 +777,48 @@ def build_ad_actions(db: Session) -> list[dict]:
             )
     priority_order = {"P0": 0, "P1": 1, "P2": 2}
     return sorted(actions, key=lambda item: (priority_order[item["priority"]], -item["spend"]))[:100]
+
+
+def build_ad_action_groups(db: Session) -> list[dict]:
+    actions = build_ad_actions(db)
+    priority_order = {"P0": 0, "P1": 1, "P2": 2}
+    grouped: dict[tuple[str, str], dict] = {}
+    unknown_index = 0
+    for action in actions:
+        linked_products = action.get("linked_products") or []
+        for product in linked_products:
+            asin = product.get("asin") or ""
+            sku = product.get("sku") or ""
+            if not asin and not sku:
+                unknown_index += 1
+                key = (f"未关联-{unknown_index}", "")
+            else:
+                key = (asin, sku)
+            group = grouped.setdefault(
+                key,
+                {
+                    "asin": asin,
+                    "sku": sku,
+                    "title": product.get("title") or "",
+                    "actions": [],
+                    "total_spend": 0.0,
+                    "total_clicks": 0.0,
+                    "total_sales": 0.0,
+                    "total_orders": 0.0,
+                    "highest_priority": "P2",
+                },
+            )
+            group["actions"].append(action)
+            group["total_spend"] += action.get("spend") or 0
+            group["total_clicks"] += action.get("clicks") or 0
+            group["total_sales"] += action.get("sales") or 0
+            group["total_orders"] += action.get("orders") or 0
+            if priority_order[action["priority"]] < priority_order[group["highest_priority"]]:
+                group["highest_priority"] = action["priority"]
+    for group in grouped.values():
+        group["acos"] = group["total_spend"] / group["total_sales"] if group["total_sales"] else None
+        group["actions"] = sorted(group["actions"], key=lambda item: (priority_order[item["priority"]], -item["spend"]))
+    return sorted(grouped.values(), key=lambda item: (priority_order[item["highest_priority"]], -item["total_spend"]))
 
 
 def build_listing_audits(db: Session) -> list[dict]:

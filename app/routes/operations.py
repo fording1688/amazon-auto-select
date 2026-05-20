@@ -9,6 +9,7 @@ from app.operations_ai import generate_operations_ai_report, latest_operations_a
 from app.pagination import build_pagination, paginate_list
 from app.report_importer import (
     REPORT_TYPES,
+    build_ad_action_groups,
     build_ad_actions,
     build_business_overview,
     build_listing_audits,
@@ -145,8 +146,8 @@ def ad_actions(
     page: int = Query(1, ge=1),
     db: Session = Depends(get_db),
 ):
-    actions, pagination = paginate_list(build_ad_actions(db), page, 10, "/operations/ad-actions")
-    return templates.TemplateResponse("ad_actions.html", {"request": request, "actions": actions, "pagination": pagination})
+    groups, pagination = paginate_list(build_ad_action_groups(db), page, 8, "/operations/ad-actions")
+    return templates.TemplateResponse("ad_actions.html", {"request": request, "groups": groups, "pagination": pagination})
 
 
 @router.get("/operations/ai-advisor")

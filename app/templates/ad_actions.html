@@ -2,54 +2,81 @@
 {% block content %}
 <section class="panel">
   <h1>广告动作清单</h1>
-  <p class="muted">基于 Search Term Report 自动生成。第一版规则偏保守，后续可按你的目标 ACOS 和毛利调整。</p>
+  <p class="muted">以 ASIN/SKU 为中心聚合 Search Term Report 动作，并通过 Advertised Product Report 的 Campaign + Ad Group 关联到广告商品。进入广告后台时，优先按这里的活动名、广告组、搜索词逐项处理。</p>
+</section>
+
+<section class="grid-list">
+  {% for group in groups %}
+  <article class="panel">
+    <div class="section-heading">
+      <div>
+        <h2>{{ group.asin or "未关联 ASIN" }}</h2>
+        <p class="muted">
+          SKU：{{ group.sku or "-" }}
+          {% if group.title %}<br>{{ group.title[:120] }}{% endif %}
+        </p>
+      </div>
+      <div class="metrics">
+        <span class="badge decision">{{ group.highest_priority }}</span>
+        <span>动作 {{ group.actions|length }}</span>
+        <span>点击 {{ "%.0f"|format(group.total_clicks) }}</span>
+        <span>花费 ${{ "%.2f"|format(group.total_spend) }}</span>
+        <span>销售 ${{ "%.2f"|format(group.total_sales) }}</span>
+        <span>订单 {{ "%.0f"|format(group.total_orders) }}</span>
+        <span>ACOS {{ "%.1f%%"|format((group.acos or 0) * 100) }}</span>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>优先级</th>
+          <th>广告定位</th>
+          <th>搜索词</th>
+          <th>动作</th>
+          <th>数据</th>
+          <th>原因</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in group.actions %}
+        <tr>
+          <td><span class="badge decision">{{ item.priority }}</span></td>
+          <td>
+            <strong>{{ item.campaign or "-" }}</strong><br>
+            <span class="muted">广告组：{{ item.ad_group or "-" }}</span><br>
+            <span class="muted">投放：{{ item.targeting or "-" }}</span><br>
+            <span class="muted">匹配：{{ item.match_type or "-" }}</span><br>
+            <span class="muted">关联：{{ item.link_method }}</span>
+          </td>
+          <td><strong>{{ item.search_term }}</strong></td>
+          <td>{{ item.action }}</td>
+          <td>
+            点击 {{ "%.0f"|format(item.clicks) }}<br>
+            花费 ${{ "%.2f"|format(item.spend) }}<br>
+            销售 ${{ "%.2f"|format(item.sales) }}<br>
+            订单 {{ "%.0f"|format(item.orders) }}<br>
+            ACOS {{ "%.1f%%"|format((item.acos or 0) * 100) }}
+          </td>
+          <td>{{ item.reason }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </article>
+  {% else %}
+  <div class="empty">暂无动作。请先上传 Search Term Report 和 Advertised Product Report。</div>
+  {% endfor %}
 </section>
 
 <section class="panel">
-  <div class="section-heading">
-    <h2>动作明细</h2>
-    <span class="muted">共 {{ pagination.total }} 条，每页 {{ pagination.per_page }} 条</span>
-  </div>
-  <table>
-    <thead>
-      <tr>
-        <th>优先级</th>
-        <th>搜索词</th>
-        <th>动作</th>
-        <th>数据</th>
-        <th>原因</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for item in actions %}
-      <tr>
-        <td><span class="badge decision">{{ item.priority }}</span></td>
-        <td>
-          <strong>{{ item.search_term }}</strong><br>
-          <span class="muted">{{ item.campaign }}</span>
-        </td>
-        <td>{{ item.action }}</td>
-        <td>
-          点击 {{ "%.0f"|format(item.clicks) }}<br>
-          花费 ${{ "%.2f"|format(item.spend) }}<br>
-          销售 ${{ "%.2f"|format(item.sales) }}<br>
-          订单 {{ "%.0f"|format(item.orders) }}<br>
-          ACOS {{ "%.1f%%"|format((item.acos or 0) * 100) }}
-        </td>
-        <td>{{ item.reason }}</td>
-      </tr>
-      {% else %}
-      <tr><td colspan="5">暂无动作。请先上传 Search Term Report。</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
   <div class="pagination">
     {% if pagination.has_prev %}
     <a class="button ghost" href="{{ pagination.base_url }}{{ pagination.separator }}page={{ pagination.prev_page }}">上一页</a>
     {% else %}
     <span class="button ghost disabled">上一页</span>
     {% endif %}
-    <span>第 {{ pagination.page }} / {{ pagination.total_pages }} 页</span>
+    <span>共 {{ pagination.total }} 个 ASIN/SKU 分组，第 {{ pagination.page }} / {{ pagination.total_pages }} 页</span>
     {% if pagination.has_next %}
     <a class="button ghost" href="{{ pagination.base_url }}{{ pagination.separator }}page={{ pagination.next_page }}">下一页</a>
     {% else %}
