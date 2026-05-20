@@ -13,6 +13,17 @@
   <div class="notice">
     默认不自动执行；必须人工确认；后续即使接入 Amazon Ads API，也要求 <code>AMAZON_ADS_API_ENABLED=true</code> 且状态为 approved。预算和出价提高都限制在 20% 内。
   </div>
+  <div class="metrics">
+    <span>待确认 {{ summary.pending }}</span>
+    <span>已确认 {{ summary.approved }}</span>
+    <span>ASIN 商品投放 {{ summary.asin_pending }}</span>
+    <span>关键词建议 {{ summary.keyword_pending }}</span>
+  </div>
+  <div class="metrics">
+    <a class="button ghost" href="/ad-recommendations?status=pending&traffic_type=asin">只看 ASIN Product Target</a>
+    <a class="button ghost" href="/ad-recommendations?status=pending&traffic_type=keyword">只看 Keyword Search Term</a>
+    <a class="button ghost" href="/ad-recommendations?status=pending&recommendation_type=add_product_targeting_asin">只看 ASIN 商品投放机会</a>
+  </div>
   {% if generated_count %}
   <div class="alert success">已生成/更新广告建议 {{ generated_count }} 条。</div>
   {% endif %}
@@ -38,6 +49,11 @@
       {% for value, label in recommendation_labels.items() %}
       <option value="{{ value }}" {{ "selected" if recommendation_type == value else "" }}>{{ label }}</option>
       {% endfor %}
+    </select>
+    <select name="traffic_type">
+      <option value="" {{ "selected" if not traffic_type else "" }}>全部流量类型</option>
+      <option value="keyword" {{ "selected" if traffic_type == "keyword" else "" }}>Keyword Search Term</option>
+      <option value="asin" {{ "selected" if traffic_type == "asin" else "" }}>ASIN Product Target</option>
     </select>
     <input type="number" step="0.01" min="0" name="acos_max" placeholder="ACOS 上限，如 0.2" value="{{ acos_max if acos_max is not none else '' }}">
     <label><input type="checkbox" name="orders_positive" value="true" {{ "checked" if orders_positive else "" }}> orders &gt; 0</label>

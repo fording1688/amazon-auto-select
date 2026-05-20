@@ -179,7 +179,7 @@ def build_execution_plan(recommendation: AdRecommendation) -> dict[str, Any]:
     target_ad_group = recommendation.ad_group_name or "Exact - Core Terms"
     if recommendation.recommendation_type == "add_product_targeting_asin":
         target_ad_group = "Product Targeting - ASIN Test"
-    return {
+    plan = {
         "action": _execution_action(recommendation.recommendation_type),
         "search_term": recommendation.search_term,
         "target_campaign": _target_campaign(recommendation.campaign_name or "", recommendation.recommendation_type),
@@ -193,6 +193,8 @@ def build_execution_plan(recommendation: AdRecommendation) -> dict[str, Any]:
         "suggested_bid": recommendation.suggested_bid,
         "suggested_daily_budget": recommendation.suggested_budget,
         "note": recommendation.reason,
+        "source_campaign": recommendation.campaign_name,
+        "source_ad_group": recommendation.ad_group_name,
         "safety_limits": {
             "manual_confirmation_required": True,
             "max_bulk_execute": 20,
@@ -202,6 +204,16 @@ def build_execution_plan(recommendation: AdRecommendation) -> dict[str, Any]:
             "api_enabled": get_settings().amazon_ads_api_enabled,
         },
     }
+    if recommendation.recommendation_type == "add_product_targeting_asin":
+        plan.update(
+            {
+                "daily_budget_range": "$5-$10",
+                "bid_guidance": "参考建议竞价或略高 10%，禁止超过 20%。",
+                "observation_window": "3-5 days",
+                "do_not_negative_in_source_auto_campaign": True,
+            }
+        )
+    return plan
 
 
 def _candidate_recommendations(db: Session) -> list[dict[str, Any]]:
@@ -450,12 +462,13 @@ def count_recommendations(
     db: Session,
     status: str | None = None,
     recommendation_type: str | None = None,
+    traffic_type: str | None = None,
     acos_max: float | None = None,
     orders_positive: bool = False,
     spend_positive: bool = False,
 ) -> int:
     query = select(func.count(AdRecommendation.id))
-    query = _apply_filters(query, status, recommendation_type, acos_max, orders_positive, spend_positive)
+    query = _apply_filters(query, status, recommendation_type, traffic_type, acos_max, orders_positive, spend_positive)
     return db.execute(query).scalar_one()
 
 
@@ -465,20 +478,34 @@ def list_recommendations(
     offset: int,
     status: str | None = None,
     recommendation_type: str | None = None,
+    traffic_type: str | None = None,
     acos_max: float | None = None,
     orders_positive: bool = False,
     spend_positive: bool = False,
 ) -> list[AdRecommendation]:
     query = select(AdRecommendation).order_by(desc(AdRecommendation.created_at), desc(AdRecommendation.spend))
-    query = _apply_filters(query, status, recommendation_type, acos_max, orders_positive, spend_positive)
+    query = _apply_filters(query, status, recommendation_type, traffic_type, acos_max, orders_positive, spend_positive)
     return db.execute(query.offset(offset).limit(limit)).scalars().all()
 
 
-def _apply_filters(query, status, recommendation_type, acos_max, orders_positive, spend_positive):
+def recommendation_summary(db: Session) -> dict[str, int]:
+    return {
+        "pending": count_recommendations(db, status="pending"),
+        "approved": count_recommendations(db, status="approved"),
+        "asin_pending": count_recommendations(db, status="pending", traffic_type="asin"),
+        "keyword_pending": count_recommendations(db, status="pending", traffic_type="keyword"),
+    }
+
+
+def _apply_filters(query, status, recommendation_type, traffic_type, acos_max, orders_positive, spend_positive):
     if status:
         query = query.where(AdRecommendation.status == status)
     if recommendation_type:
         query = query.where(AdRecommendation.recommendation_type == recommendation_type)
+    if traffic_type == "asin":
+        query = query.where(AdRecommendation.search_term.ilike("B0%"))
+    elif traffic_type == "keyword":
+        query = query.where(~AdRecommendation.search_term.ilike("B0%"))
     if acos_max is not None:
         query = query.where(AdRecommendation.acos <= acos_max)
     if orders_positive:

@@ -16,6 +16,7 @@ from app.ad_recommendations import (
     generate_ad_recommendations,
     list_recommendations,
     mark_manual_recommendation,
+    recommendation_summary,
     reject_recommendation,
 )
 from app.database import get_db
@@ -136,6 +137,7 @@ def ad_recommendations_page(
     page: int = Query(1, ge=1),
     status: str = Query("pending"),
     recommendation_type: str = Query(""),
+    traffic_type: str = Query(""),
     acos_max: Optional[float] = Query(None),
     orders_positive: bool = Query(False),
     spend_positive: bool = Query(False),
@@ -143,12 +145,15 @@ def ad_recommendations_page(
 ):
     status_filter = status or None
     type_filter = recommendation_type or None
-    total = count_recommendations(db, status_filter, type_filter, acos_max, orders_positive, spend_positive)
+    traffic_filter = traffic_type or None
+    total = count_recommendations(db, status_filter, type_filter, traffic_filter, acos_max, orders_positive, spend_positive)
     query_parts = []
     if status:
         query_parts.append(f"status={status}")
     if recommendation_type:
         query_parts.append(f"recommendation_type={recommendation_type}")
+    if traffic_type:
+        query_parts.append(f"traffic_type={traffic_type}")
     if acos_max is not None:
         query_parts.append(f"acos_max={acos_max}")
     if orders_positive:
@@ -163,6 +168,7 @@ def ad_recommendations_page(
         offset=(pagination.page - 1) * pagination.per_page,
         status=status_filter,
         recommendation_type=type_filter,
+        traffic_type=traffic_filter,
         acos_max=acos_max,
         orders_positive=orders_positive,
         spend_positive=spend_positive,
@@ -175,7 +181,9 @@ def ad_recommendations_page(
             "pagination": pagination,
             "status": status,
             "recommendation_type": recommendation_type,
+            "traffic_type": traffic_type,
             "acos_max": acos_max,
+            "summary": recommendation_summary(db),
             "orders_positive": orders_positive,
             "spend_positive": spend_positive,
             "recommendation_labels": RECOMMENDATION_LABELS,
