@@ -782,6 +782,10 @@ def build_business_overview(db: Session) -> dict:
     metrics = db.execute(select(BusinessMetric).where(BusinessMetric.batch_id == latest_batch.id)).scalars().all()
     rows = []
     for row in metrics:
+        row_date = _raw_text(row, "日期", "Date")
+        sku = row.sku or _raw_text(row, "SKU", "子SKU", "Child SKU", "child sku")
+        asin = row.asin or _raw_text(row, "ASIN", "子ASIN", "Child ASIN", "child asin")
+        title = row.title or _raw_text(row, "标题", "商品名称", "Title", "Product Name")
         sales = row.ordered_sales if row.ordered_sales is not None else _raw_float(row, "已订购商品销售额", "Ordered Product Sales")
         b2b_sales = _raw_float(row, "已订购商品销售额 - B2B", "Ordered Product Sales - B2B")
         units = row.units_ordered if row.units_ordered is not None else _raw_float(row, "已订购商品数量", "Units Ordered")
@@ -793,7 +797,12 @@ def build_business_overview(db: Session) -> dict:
         asp = _raw_float(row, "平均售价", "Average Sales per Unit")
         rows.append(
             {
-                "date": _raw_text(row, "日期", "Date") or row.sku or row.asin or "",
+                "date": row_date,
+                "sku": sku,
+                "asin": asin,
+                "title": title,
+                "label": row_date or sku or asin or "",
+                "dimension_type": "date" if row_date else "product",
                 "sales": sales,
                 "b2b_sales": b2b_sales,
                 "units": units,
@@ -809,17 +818,24 @@ def build_business_overview(db: Session) -> dict:
     total_units = sum(item["units"] for item in rows)
     total_orders = sum(item["orders"] for item in rows)
     total_sessions = sum(item["sessions"] for item in rows)
-    day_count = len(rows)
-    first_half = rows[: max(1, day_count // 2)]
-    second_half = rows[max(1, day_count // 2) :]
+    record_count = len(rows)
+    is_date_report = bool(rows) and sum(1 for item in rows if item["dimension_type"] == "date") >= max(1, len(rows) * 0.8)
+    first_half = rows[: max(1, record_count // 2)]
+    second_half = rows[max(1, record_count // 2) :]
 
     def avg_sales(items):
         return sum(item["sales"] for item in items) / len(items) if items else 0
 
     summary = {
-        "day_count": day_count,
+        "day_count": record_count,
+        "record_count": record_count,
+        "is_date_report": is_date_report,
+        "dimension_label": "日期" if is_date_report else "SKU / ASIN",
+        "leaderboard_title": "天" if is_date_report else "记录",
+        "detail_title": "按日明细" if is_date_report else "按 SKU/ASIN 明细",
+        "average_sales_label": "日均" if is_date_report else "单记录平均",
         "total_sales": total_sales,
-        "avg_daily_sales": total_sales / day_count if day_count else 0,
+        "avg_daily_sales": total_sales / record_count if record_count else 0,
         "total_b2b": total_b2b,
         "b2b_ratio": total_b2b / total_sales if total_sales else 0,
         "total_units": total_units,
@@ -841,9 +857,9 @@ def build_business_overview(db: Session) -> dict:
     low_days = sorted(rows, key=lambda item: item["sales"])[:5]
     insights = []
     if summary["sales_trend"] > 0.08:
-        insights.append("后半段日均销售额明显高于前半段，说明近期销售动能在增强。")
+        insights.append("后半段平均销售额明显高于前半段，说明近期销售动能在增强。" if is_date_report else "后半部分 SKU/ASIN 平均销售额高于前半部分，头部产品贡献更明显。")
     elif summary["sales_trend"] < -0.08:
-        insights.append("后半段日均销售额低于前半段，需要检查广告、库存、价格或排名变化。")
+        insights.append("后半段平均销售额低于前半段，需要检查广告、库存、价格或排名变化。" if is_date_report else "后半部分 SKU/ASIN 平均销售额低于前半部分，产品销售分层明显。")
     else:
         insights.append("整体销售较稳定，下一步重点看 SKU 级利润和广告词效率。")
     if summary["conversion_rate"] >= 0.1:

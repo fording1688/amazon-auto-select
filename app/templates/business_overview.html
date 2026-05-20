@@ -5,9 +5,9 @@
   {% if batch %}
   <p class="muted">来源：{{ batch.file_name }} · {{ batch.row_count }} 行 · {{ batch.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</p>
   <div class="metrics">
-    <span>统计天数 {{ summary.day_count }}</span>
+    <span>{{ summary.dimension_label }}记录 {{ summary.record_count }}</span>
     <span>销售额 ${{ "%.2f"|format(summary.total_sales) }}</span>
-    <span>日均 ${{ "%.2f"|format(summary.avg_daily_sales) }}</span>
+    <span>{{ summary.average_sales_label }} ${{ "%.2f"|format(summary.avg_daily_sales) }}</span>
     <span>订单 {{ "%.0f"|format(summary.total_orders) }}</span>
     <span>件数 {{ "%.0f"|format(summary.total_units) }}</span>
     <span>Sessions {{ "%.0f"|format(summary.total_sessions) }}</span>
@@ -31,8 +31,8 @@
       {% endfor %}
     </ul>
     <h2>趋势</h2>
-    <p>前半段日均：${{ "%.2f"|format(summary.first_half_avg_sales) }}</p>
-    <p>后半段日均：${{ "%.2f"|format(summary.second_half_avg_sales) }}</p>
+    <p>前半段平均：${{ "%.2f"|format(summary.first_half_avg_sales) }}</p>
+    <p>后半段平均：${{ "%.2f"|format(summary.second_half_avg_sales) }}</p>
     <p>变化：{{ "%.1f%%"|format(summary.sales_trend * 100) }}</p>
   </div>
 
@@ -49,13 +49,17 @@
 
 <section class="columns">
   <div class="panel">
-    <h2>销售最高的 5 天</h2>
+    <h2>销售最高的 5 {{ summary.leaderboard_title }}</h2>
     <table>
-      <thead><tr><th>日期</th><th>销售额</th><th>订单</th><th>转化率</th><th>平均售价</th></tr></thead>
+      <thead><tr><th>{{ summary.dimension_label }}</th>{% if not summary.is_date_report %}<th>标题</th>{% endif %}<th>销售额</th><th>订单</th><th>转化率</th><th>平均售价</th></tr></thead>
       <tbody>
         {% for row in top_days %}
         <tr>
-          <td>{{ row.date }}</td>
+          <td>
+            {{ row.label }}
+            {% if not summary.is_date_report and row.asin and row.asin != row.label %}<br><span class="muted">{{ row.asin }}</span>{% endif %}
+          </td>
+          {% if not summary.is_date_report %}<td>{{ (row.title or "")[:70] }}</td>{% endif %}
           <td>${{ "%.2f"|format(row.sales) }}</td>
           <td>{{ "%.0f"|format(row.orders) }}</td>
           <td>{{ "%.1f%%"|format((row.conversion_rate or 0) * 100) }}</td>
@@ -67,13 +71,17 @@
   </div>
 
   <div class="panel">
-    <h2>销售最低的 5 天</h2>
+    <h2>销售最低的 5 {{ summary.leaderboard_title }}</h2>
     <table>
-      <thead><tr><th>日期</th><th>销售额</th><th>订单</th><th>转化率</th><th>平均售价</th></tr></thead>
+      <thead><tr><th>{{ summary.dimension_label }}</th>{% if not summary.is_date_report %}<th>标题</th>{% endif %}<th>销售额</th><th>订单</th><th>转化率</th><th>平均售价</th></tr></thead>
       <tbody>
         {% for row in low_days %}
         <tr>
-          <td>{{ row.date }}</td>
+          <td>
+            {{ row.label }}
+            {% if not summary.is_date_report and row.asin and row.asin != row.label %}<br><span class="muted">{{ row.asin }}</span>{% endif %}
+          </td>
+          {% if not summary.is_date_report %}<td>{{ (row.title or "")[:70] }}</td>{% endif %}
           <td>${{ "%.2f"|format(row.sales) }}</td>
           <td>{{ "%.0f"|format(row.orders) }}</td>
           <td>{{ "%.1f%%"|format((row.conversion_rate or 0) * 100) }}</td>
@@ -86,11 +94,15 @@
 </section>
 
 <section class="panel">
-  <h2>按日明细</h2>
+  <div class="section-heading">
+    <h2>{{ summary.detail_title }}</h2>
+    <span class="muted">共 {{ pagination.total }} 条，每页 {{ pagination.per_page }} 条</span>
+  </div>
   <table>
     <thead>
       <tr>
-        <th>日期</th>
+        <th>{{ summary.dimension_label }}</th>
+        {% if not summary.is_date_report %}<th>标题</th>{% endif %}
         <th>销售额</th>
         <th>B2B 销售</th>
         <th>件数</th>
@@ -103,7 +115,11 @@
     <tbody>
       {% for row in rows %}
       <tr>
-        <td>{{ row.date }}</td>
+        <td>
+          {{ row.label }}
+          {% if not summary.is_date_report and row.asin and row.asin != row.label %}<br><span class="muted">{{ row.asin }}</span>{% endif %}
+        </td>
+        {% if not summary.is_date_report %}<td>{{ (row.title or "")[:90] }}</td>{% endif %}
         <td>${{ "%.2f"|format(row.sales) }}</td>
         <td>${{ "%.2f"|format(row.b2b_sales) }}</td>
         <td>{{ "%.0f"|format(row.units) }}</td>
@@ -115,6 +131,19 @@
       {% endfor %}
     </tbody>
   </table>
+  <div class="pagination">
+    {% if pagination.has_prev %}
+    <a class="button ghost" href="/operations/business-overview?page={{ pagination.prev_page }}">上一页</a>
+    {% else %}
+    <span class="button ghost disabled">上一页</span>
+    {% endif %}
+    <span>第 {{ pagination.page }} / {{ pagination.total_pages }} 页</span>
+    {% if pagination.has_next %}
+    <a class="button ghost" href="/operations/business-overview?page={{ pagination.next_page }}">下一页</a>
+    {% else %}
+    <span class="button ghost disabled">下一页</span>
+    {% endif %}
+  </div>
 </section>
 {% endif %}
 {% endblock %}

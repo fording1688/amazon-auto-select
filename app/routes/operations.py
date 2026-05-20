@@ -129,8 +129,28 @@ def sku_dashboard(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/operations/business-overview")
-def business_overview(request: Request, db: Session = Depends(get_db)):
-    return templates.TemplateResponse("business_overview.html", {"request": request, **build_business_overview(db)})
+def business_overview(
+    request: Request,
+    page: int = Query(1, ge=1),
+    db: Session = Depends(get_db),
+):
+    data = build_business_overview(db)
+    rows = data.get("rows") or []
+    per_page = 10
+    total_pages = max((len(rows) + per_page - 1) // per_page, 1)
+    page = min(max(page, 1), total_pages)
+    data["rows"] = rows[(page - 1) * per_page : page * per_page]
+    data["pagination"] = {
+        "page": page,
+        "per_page": per_page,
+        "total": len(rows),
+        "total_pages": total_pages,
+        "has_prev": page > 1,
+        "has_next": page < total_pages,
+        "prev_page": page - 1,
+        "next_page": page + 1,
+    }
+    return templates.TemplateResponse("business_overview.html", {"request": request, **data})
 
 
 @router.get("/operations/ad-actions")
