@@ -1,0 +1,1 @@
+export default function ProductOpportunityPage() { return <main className="mx-auto max-w-5xl px-6 py-8"><h1 className="text-3xl font-bold">Product Opportunity Center</h1><p className="mt-2 text-slate-600">下一阶段接入竞品表和关键词拓展后，用于发现高利润小众机会品。</p></main>; }

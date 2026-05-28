@@ -5,6 +5,8 @@ __pycache__/
 .pycache/
 *.db
 .DS_Store
+frontend/.next/
+frontend/node_modules/
 amazon_reports/inbox/*
 amazon_reports/imported/*
 amazon_reports/failed/*

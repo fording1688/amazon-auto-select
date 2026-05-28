@@ -84,6 +84,36 @@ OPENAI_MODEL=gpt-4o-mini
 - 单次批量执行不超过 20 条
 - 预算和出价提高都不得超过 20%
 
+
+## Amazon Seller Growth Copilot MVP
+
+本仓库已新增前后端分离目录：
+
+- `frontend/`：Next.js + Tailwind CSS 前端，面向 Cloudflare Pages。
+- `backend/`：后端说明，当前复用现有 FastAPI 应用 `app.main:app`，面向 Render/VPS。
+- `database/`：Supabase PostgreSQL schema。
+- `docs/`：架构说明。
+
+新增 API：
+
+- `POST /api/copilot/uploads/{report_type}`：上传 Business、Search Term、Campaign、Inventory、Product Cost 报表。
+- `GET /api/copilot/sku-health`：SKU 健康中心。
+- `GET /api/copilot/ads-diagnosis`：广告诊断中心。
+- `POST /api/copilot/profit-calculator`：利润计算器。
+- `GET /api/copilot/daily-report`：每日中文运营报告。
+
+前端本地启动：
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+默认调用 `http://127.0.0.1:8005` 的后端，可通过 `NEXT_PUBLIC_API_BASE_URL` 修改。
+
+第一版只生成运营建议，不自动修改亚马逊广告后台。
+
 ## 后续接真实 Amazon API
 
 统一入口在 `app/amazon_api_client.py`：

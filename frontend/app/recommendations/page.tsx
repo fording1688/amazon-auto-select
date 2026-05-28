@@ -1,0 +1,2 @@
+import { API_BASE } from '@/lib/api';
+export default function RecommendationsPage() { return <main className="mx-auto max-w-5xl px-6 py-8"><h1 className="text-3xl font-bold">Recommendations Center</h1><p className="mt-2 text-slate-600">所有建议默认只供人工确认，不自动修改亚马逊后台。</p><a className="mt-6 inline-flex rounded bg-blue-700 px-4 py-2 font-semibold text-white" href={`${API_BASE}/ad-recommendations`}>查看广告建议安全模式</a></main>; }

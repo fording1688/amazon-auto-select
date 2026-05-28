@@ -1,10 +1,11 @@
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.database import SessionLocal, init_db
-from app.routes import keywords, operations, products, reports, research, tasks
+from app.routes import copilot, keywords, operations, products, reports, research, tasks
 from app.scheduler import start_scheduler, stop_scheduler
 from app.report_importer import ensure_report_dirs
 from app.tasks import seed_keywords
@@ -13,7 +14,16 @@ from app.tasks import seed_keywords
 app = FastAPI(title="亚马逊自动测款分析系统")
 templates = Jinja2Templates(directory="app/templates")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.include_router(copilot.router)
 app.include_router(keywords.router)
 app.include_router(operations.router)
 app.include_router(products.router)

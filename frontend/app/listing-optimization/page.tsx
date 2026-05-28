@@ -1,0 +1,1 @@
+export default function ListingOptimizationPage() { return <main className="mx-auto max-w-5xl px-6 py-8"><h1 className="text-3xl font-bold">Listing Optimization Center</h1><p className="mt-2 text-slate-600">用于汇总标题、五点、图片、价格和转化率问题。当前可先在后端 Listing 体检页查看。</p></main>; }

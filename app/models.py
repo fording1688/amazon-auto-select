@@ -174,6 +174,113 @@ class AdRecommendation(Base):
         return "Keyword Search Term"
 
 
+class SalesDaily(Base):
+    __tablename__ = "sales_daily"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    sku: Mapped[Optional[str]] = mapped_column(String(120), index=True)
+    asin: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    date: Mapped[Optional[datetime]] = mapped_column(DateTime, index=True)
+    sales: Mapped[Optional[float]] = mapped_column(Float)
+    orders: Mapped[Optional[float]] = mapped_column(Float)
+    units: Mapped[Optional[float]] = mapped_column(Float)
+    sessions: Mapped[Optional[float]] = mapped_column(Float)
+    conversion_rate: Mapped[Optional[float]] = mapped_column(Float)
+    raw_json: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
+class AdsDaily(Base):
+    __tablename__ = "ads_daily"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    sku: Mapped[Optional[str]] = mapped_column(String(120), index=True)
+    asin: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    campaign_name: Mapped[Optional[str]] = mapped_column(String(255), index=True)
+    date: Mapped[Optional[datetime]] = mapped_column(DateTime, index=True)
+    impressions: Mapped[Optional[float]] = mapped_column(Float)
+    clicks: Mapped[Optional[float]] = mapped_column(Float)
+    spend: Mapped[Optional[float]] = mapped_column(Float)
+    sales: Mapped[Optional[float]] = mapped_column(Float)
+    orders: Mapped[Optional[float]] = mapped_column(Float)
+    acos: Mapped[Optional[float]] = mapped_column(Float)
+    cpc: Mapped[Optional[float]] = mapped_column(Float)
+    raw_json: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
+class SearchTerm(Base):
+    __tablename__ = "search_terms"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    sku: Mapped[Optional[str]] = mapped_column(String(120), index=True)
+    asin: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    campaign_name: Mapped[Optional[str]] = mapped_column(String(255), index=True)
+    ad_group_name: Mapped[Optional[str]] = mapped_column(String(255), index=True)
+    targeting: Mapped[Optional[str]] = mapped_column(Text)
+    match_type: Mapped[Optional[str]] = mapped_column(String(80))
+    customer_search_term: Mapped[Optional[str]] = mapped_column(Text, index=True)
+    date: Mapped[Optional[datetime]] = mapped_column(DateTime, index=True)
+    impressions: Mapped[Optional[float]] = mapped_column(Float)
+    clicks: Mapped[Optional[float]] = mapped_column(Float)
+    spend: Mapped[Optional[float]] = mapped_column(Float)
+    sales: Mapped[Optional[float]] = mapped_column(Float)
+    orders: Mapped[Optional[float]] = mapped_column(Float)
+    acos: Mapped[Optional[float]] = mapped_column(Float)
+    cpc: Mapped[Optional[float]] = mapped_column(Float)
+    conversion_rate: Mapped[Optional[float]] = mapped_column(Float)
+    diagnosis: Mapped[Optional[str]] = mapped_column(String(80), index=True)
+    raw_json: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
+class InventoryDaily(Base):
+    __tablename__ = "inventory_daily"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    sku: Mapped[Optional[str]] = mapped_column(String(120), index=True)
+    asin: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    date: Mapped[Optional[datetime]] = mapped_column(DateTime, index=True)
+    available: Mapped[Optional[float]] = mapped_column(Float)
+    inbound: Mapped[Optional[float]] = mapped_column(Float)
+    reserved: Mapped[Optional[float]] = mapped_column(Float)
+    days_of_supply: Mapped[Optional[float]] = mapped_column(Float)
+    raw_json: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
+class CompetitorProduct(Base):
+    __tablename__ = "competitor_products"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    asin: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    keyword: Mapped[Optional[str]] = mapped_column(String(255), index=True)
+    title: Mapped[Optional[str]] = mapped_column(Text)
+    brand: Mapped[Optional[str]] = mapped_column(String(120))
+    price: Mapped[Optional[float]] = mapped_column(Float)
+    rating: Mapped[Optional[float]] = mapped_column(Float)
+    review_count: Mapped[Optional[int]] = mapped_column(Integer)
+    product_url: Mapped[Optional[str]] = mapped_column(Text)
+    raw_json: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
+class Recommendation(Base):
+    __tablename__ = "recommendations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    sku: Mapped[Optional[str]] = mapped_column(String(120), index=True)
+    asin: Mapped[Optional[str]] = mapped_column(String(32), index=True)
+    recommendation_type: Mapped[str] = mapped_column(String(80), index=True)
+    priority: Mapped[str] = mapped_column(String(20), default="P2", index=True)
+    title: Mapped[str] = mapped_column(String(255), default="")
+    content: Mapped[Optional[str]] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(30), default="pending", index=True)
+    source_json: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+
 class BusinessMetric(Base):
     __tablename__ = "business_metrics"
 
