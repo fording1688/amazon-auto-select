@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
 import re
@@ -27,6 +28,20 @@ from app.models import (
     SearchTermMetric,
     TargetingMetric,
 )
+
+
+DUPLICATE_STRATEGIES = {"prompt", "overwrite", "skip", "preserve_inactive"}
+REPORT_MODEL_BY_TYPE = {
+    "business": BusinessMetric,
+    "search_terms": SearchTermMetric,
+    "advertised_products": AdvertisedProductMetric,
+    "campaigns": CampaignMetric,
+    "targeting": TargetingMetric,
+    "bulk_operations": BulkOperationItem,
+    "inventory": InventoryItem,
+    "costs": CostItem,
+    "listings": ListingItem,
+}
 
 
 REPORT_TYPES = {
@@ -56,6 +71,9 @@ ALIASES = {
     "units_ordered": ["units ordered", "unitsordered", "ordered units", "units"],
     "ordered_sales": ["ordered product sales", "orderedproductsales", "sales", "ordered revenue"],
     "date": ["date", "日期"],
+    "start_date": ["start date", "startdate", "from", "开始日期", "开始时间"],
+    "end_date": ["end date", "enddate", "to", "结束日期", "结束时间"],
+    "marketplace": ["marketplace", "marketplace name", "country", "国家", "站点"],
     "conversion_rate": ["unit session percentage", "unit session %", "conversion rate", "cvr"],
     "buy_box_percentage": ["buy box percentage", "buy box %"],
     "campaign_name": ["campaign name", "campaign", "广告活动名称"],
@@ -179,8 +197,77 @@ def to_float(value: Any) -> float | None:
     return number
 
 
+def to_datetime(value: Any) -> datetime | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    text = text.replace("T", " ").split("+")[0].strip()
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y", "%Y/%m/%d", "%d/%m/%Y", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(text[: len(fmt)], fmt)
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        return None
+
+
 def _json(row: dict) -> str:
     return json.dumps(row, ensure_ascii=False, default=str)
+
+
+def _row_period(row: dict, alias: dict[str, str]) -> tuple[datetime | None, datetime | None, datetime | None]:
+    report_date = to_datetime(_get(row, alias, "date"))
+    period_start = to_datetime(_get(row, alias, "start_date")) or report_date
+    period_end = to_datetime(_get(row, alias, "end_date")) or report_date
+    return report_date, period_start, period_end
+
+
+def _row_marketplace(row: dict, alias: dict[str, str], default: str = "US") -> str:
+    value = str(_get(row, alias, "marketplace", default) or default).strip()
+    normalized = value.upper()
+    if normalized in {"UNITED STATES", "USA", "US"}:
+        return "US"
+    return value or default
+
+
+def _duplicate_parts(report_type: str, row: dict, alias: dict[str, str], marketplace: str) -> list[str]:
+    report_date, _, _ = _row_period(row, alias)
+    date_key = report_date.strftime("%Y-%m-%d") if report_date else ""
+    sku = str(_get(row, alias, "sku")).strip().lower()
+    asin = str(_get(row, alias, "asin")).strip().lower()
+    campaign = str(_get(row, alias, "campaign_name")).strip().lower()
+    ad_group = str(_get(row, alias, "ad_group_name")).strip().lower()
+    targeting = str(_get(row, alias, "targeting")).strip().lower()
+    search_term = str(_get(row, alias, "search_term")).strip().lower()
+    entity_id = str(_get(row, alias, "entity_id")).strip().lower()
+    if report_type == "business":
+        return [report_type, marketplace, sku, asin, date_key]
+    if report_type == "search_terms":
+        return [report_type, marketplace, campaign, ad_group, targeting, search_term, date_key]
+    if report_type == "advertised_products":
+        return [report_type, marketplace, campaign, sku, asin, date_key]
+    if report_type == "campaigns":
+        return [report_type, marketplace, campaign, date_key]
+    if report_type == "targeting":
+        return [report_type, marketplace, campaign, ad_group, targeting, date_key]
+    if report_type == "bulk_operations":
+        return [report_type, marketplace, campaign, ad_group, entity_id, targeting, search_term, sku, asin]
+    if report_type == "inventory":
+        return [report_type, marketplace, sku, asin, date_key]
+    if report_type in {"costs", "listings"}:
+        return [report_type, marketplace, sku, asin]
+    return [report_type, marketplace, json.dumps(row, sort_keys=True, default=str)]
+
+
+def row_data_hash(report_type: str, row: dict, alias: dict[str, str], marketplace: str = "US") -> str:
+    key = "|".join(_duplicate_parts(report_type, row, alias, marketplace))
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
 
 
 def _is_empty_cell(value: Any) -> bool:
@@ -254,10 +341,27 @@ def parse_tabular_file(file_name: str, content: bytes) -> list[dict]:
     raise ValueError("只支持 CSV、TSV、XLSX、XLSM 文件。")
 
 
-def import_report(db: Session, report_type: str, file_name: str, content: bytes) -> ImportBatch:
+def import_report(
+    db: Session,
+    report_type: str,
+    file_name: str,
+    content: bytes,
+    duplicate_strategy: str = "prompt",
+    uploaded_by: str | None = None,
+    marketplace: str = "US",
+) -> ImportBatch:
     if report_type not in REPORT_TYPES:
         raise ValueError("未知报表类型")
-    batch = ImportBatch(report_type=report_type, file_name=file_name, status="running")
+    if duplicate_strategy not in DUPLICATE_STRATEGIES:
+        raise ValueError("未知重复数据处理方式")
+    batch = ImportBatch(
+        report_type=report_type,
+        file_name=file_name,
+        marketplace=marketplace,
+        uploaded_by=uploaded_by,
+        duplicate_strategy=duplicate_strategy,
+        status="running",
+    )
     db.add(batch)
     db.commit()
     db.refresh(batch)
@@ -265,11 +369,72 @@ def import_report(db: Session, report_type: str, file_name: str, content: bytes)
         rows = parse_tabular_file(file_name, content)
         if not rows:
             raise ValueError("文件没有可读取的数据行。")
+        prepared = []
+        dates = []
+        hashes = []
         for row in rows:
             alias = _alias_map(list(row.keys()))
-            _insert_row(db, batch.id, report_type, row, alias)
+            row_marketplace = _row_marketplace(row, alias, marketplace)
+            report_date, period_start, period_end = _row_period(row, alias)
+            data_hash = row_data_hash(report_type, row, alias, row_marketplace)
+            if report_date:
+                dates.append(report_date)
+            if period_start:
+                dates.append(period_start)
+            if period_end:
+                dates.append(period_end)
+            hashes.append(data_hash)
+            prepared.append((row, alias, row_marketplace, report_date, period_start, period_end, data_hash))
+
+        model = REPORT_MODEL_BY_TYPE.get(report_type)
+        duplicate_hashes: set[str] = set()
+        if model and hashes:
+            duplicate_hashes = set(
+                db.execute(
+                    select(model.data_hash).where(model.data_hash.in_(hashes)).where(model.is_active.is_(True))
+                )
+                .scalars()
+                .all()
+            )
+        batch.duplicate_count = len(duplicate_hashes)
+        batch.period_start = min(dates) if dates else None
+        batch.period_end = max(dates) if dates else None
+        if duplicate_hashes and duplicate_strategy == "prompt":
+            batch.status = "duplicate_found"
+            batch.error_message = (
+                f"发现 {len(duplicate_hashes)} 条可能重复数据。请选择：覆盖旧数据、跳过重复数据、"
+                "或保留为新批次但不参与默认分析。"
+            )
+            batch.row_count = 0
+            db.commit()
+            db.refresh(batch)
+            return batch
+        if duplicate_hashes and duplicate_strategy == "overwrite" and model:
+            db.query(model).filter(model.data_hash.in_(duplicate_hashes)).update(
+                {"is_active": False}, synchronize_session=False
+            )
+
+        inserted = 0
+        for row, alias, row_marketplace, report_date, period_start, period_end, data_hash in prepared:
+            if data_hash in duplicate_hashes and duplicate_strategy == "skip":
+                continue
+            is_active = not (data_hash in duplicate_hashes and duplicate_strategy == "preserve_inactive")
+            _insert_row(
+                db,
+                batch.id,
+                report_type,
+                row,
+                alias,
+                marketplace=row_marketplace,
+                report_date=report_date,
+                period_start=period_start,
+                period_end=period_end,
+                is_active=is_active,
+                data_hash=data_hash,
+            )
+            inserted += 1
         batch.status = "success"
-        batch.row_count = len(rows)
+        batch.row_count = inserted
     except Exception as exc:
         db.rollback()
         batch = db.get(ImportBatch, batch.id)
@@ -330,7 +495,7 @@ def infer_report_type(file_name: str, rows: list[dict]) -> str:
     raise ValueError("无法自动识别报表类型，请在网页手动选择类型上传。")
 
 
-def scan_inbox(db: Session) -> list[dict]:
+def scan_inbox(db: Session, duplicate_strategy: str = "prompt") -> list[dict]:
     ensure_report_dirs()
     results = []
     for path in sorted(REPORT_INBOX.iterdir()):
@@ -341,7 +506,7 @@ def scan_inbox(db: Session) -> list[dict]:
             content = path.read_bytes()
             rows = parse_tabular_file(path.name, content)
             report_type = infer_report_type(path.name, rows)
-            batch = import_report(db, report_type, path.name, content)
+            batch = import_report(db, report_type, path.name, content, duplicate_strategy=duplicate_strategy)
             target_dir = REPORT_IMPORTED if batch.status == "success" else REPORT_FAILED
             destination = target_dir / f"{path.stem}-{timestamp}{path.suffix}"
             shutil.move(str(path), destination)
@@ -372,8 +537,30 @@ def scan_inbox(db: Session) -> list[dict]:
     return results
 
 
-def _insert_row(db: Session, batch_id: int, report_type: str, row: dict, alias: dict[str, str]) -> None:
-    common = {"batch_id": batch_id, "raw_json": _json(row)}
+def _insert_row(
+    db: Session,
+    batch_id: int,
+    report_type: str,
+    row: dict,
+    alias: dict[str, str],
+    marketplace: str = "US",
+    report_date: datetime | None = None,
+    period_start: datetime | None = None,
+    period_end: datetime | None = None,
+    is_active: bool = True,
+    data_hash: str | None = None,
+) -> None:
+    common = {
+        "batch_id": batch_id,
+        "import_batch_id": batch_id,
+        "marketplace": marketplace,
+        "report_date": report_date,
+        "period_start": period_start,
+        "period_end": period_end,
+        "is_active": is_active,
+        "data_hash": data_hash,
+        "raw_json": _json(row),
+    }
     if report_type == "business":
         db.add(
             BusinessMetric(
@@ -527,7 +714,7 @@ def _insert_row(db: Session, batch_id: int, report_type: str, row: dict, alias: 
 
 def latest_batches(db: Session, limit: int = 10, offset: int = 0) -> list[ImportBatch]:
     return (
-        db.execute(select(ImportBatch).order_by(desc(ImportBatch.created_at)).offset(offset).limit(limit))
+        db.execute(select(ImportBatch).order_by(desc(ImportBatch.uploaded_at)).offset(offset).limit(limit))
         .scalars()
         .all()
     )
@@ -538,10 +725,18 @@ def count_batches(db: Session) -> int:
 
 
 def build_sku_dashboard(db: Session) -> list[SkuSummary]:
-    business_rows = db.execute(select(BusinessMetric)).scalars().all()
-    ad_rows = db.execute(select(AdvertisedProductMetric)).scalars().all()
-    costs = db.execute(select(CostItem).order_by(desc(CostItem.created_at))).scalars().all()
-    listings = db.execute(select(ListingItem).order_by(desc(ListingItem.created_at))).scalars().all()
+    business_rows = db.execute(select(BusinessMetric).where(BusinessMetric.is_active.is_(True))).scalars().all()
+    ad_rows = db.execute(select(AdvertisedProductMetric).where(AdvertisedProductMetric.is_active.is_(True))).scalars().all()
+    costs = (
+        db.execute(select(CostItem).where(CostItem.is_active.is_(True)).order_by(desc(CostItem.created_at)))
+        .scalars()
+        .all()
+    )
+    listings = (
+        db.execute(select(ListingItem).where(ListingItem.is_active.is_(True)).order_by(desc(ListingItem.created_at)))
+        .scalars()
+        .all()
+    )
 
     by_sku: dict[str, dict] = defaultdict(lambda: defaultdict(float))
     meta: dict[str, dict] = defaultdict(dict)
@@ -666,10 +861,22 @@ def _sku_tags_and_recommendations(
 
 
 def build_ad_actions(db: Session) -> list[dict]:
-    rows = db.execute(select(SearchTermMetric).order_by(desc(SearchTermMetric.spend))).scalars().all()
-    advertised_rows = db.execute(select(AdvertisedProductMetric)).scalars().all()
-    listings = db.execute(select(ListingItem).order_by(desc(ListingItem.created_at))).scalars().all()
-    business_rows = db.execute(select(BusinessMetric).order_by(desc(BusinessMetric.created_at))).scalars().all()
+    rows = (
+        db.execute(select(SearchTermMetric).where(SearchTermMetric.is_active.is_(True)).order_by(desc(SearchTermMetric.spend)))
+        .scalars()
+        .all()
+    )
+    advertised_rows = db.execute(select(AdvertisedProductMetric).where(AdvertisedProductMetric.is_active.is_(True))).scalars().all()
+    listings = (
+        db.execute(select(ListingItem).where(ListingItem.is_active.is_(True)).order_by(desc(ListingItem.created_at)))
+        .scalars()
+        .all()
+    )
+    business_rows = (
+        db.execute(select(BusinessMetric).where(BusinessMetric.is_active.is_(True)).order_by(desc(BusinessMetric.created_at)))
+        .scalars()
+        .all()
+    )
 
     title_by_key = {}
     for item in [*listings, *business_rows]:
@@ -1033,7 +1240,11 @@ def build_operations_cockpit(db: Session) -> dict:
 
 
 def build_listing_audits(db: Session) -> list[dict]:
-    listings = db.execute(select(ListingItem).order_by(desc(ListingItem.created_at))).scalars().all()
+    listings = (
+        db.execute(select(ListingItem).where(ListingItem.is_active.is_(True)).order_by(desc(ListingItem.created_at)))
+        .scalars()
+        .all()
+    )
     audits = []
     seen = set()
     for item in listings:
@@ -1097,7 +1308,15 @@ def build_business_overview(db: Session) -> dict:
     if not latest_batch:
         return {"batch": None, "rows": [], "summary": {}, "insights": []}
 
-    metrics = db.execute(select(BusinessMetric).where(BusinessMetric.batch_id == latest_batch.id)).scalars().all()
+    metrics = (
+        db.execute(
+            select(BusinessMetric)
+            .where(BusinessMetric.batch_id == latest_batch.id)
+            .where(BusinessMetric.is_active.is_(True))
+        )
+        .scalars()
+        .all()
+    )
     rows = []
     for row in metrics:
         row_date = _raw_text(row, "日期", "Date")

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -29,9 +29,24 @@ class ProfitInput(BaseModel):
 
 
 @router.post("/uploads/{report_type}")
-async def upload_report(report_type: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def upload_report(
+    report_type: str,
+    file: UploadFile = File(...),
+    duplicate_strategy: str = Form("prompt"),
+    uploaded_by: str = Form(""),
+    marketplace: str = Form("US"),
+    db: Session = Depends(get_db),
+):
     content = await file.read()
-    return import_copilot_report(db, report_type, file.filename or "uploaded_report", content)
+    return import_copilot_report(
+        db,
+        report_type,
+        file.filename or "uploaded_report",
+        content,
+        duplicate_strategy=duplicate_strategy,
+        uploaded_by=uploaded_by or None,
+        marketplace=marketplace or "US",
+    )
 
 
 @router.get("/sku-health")

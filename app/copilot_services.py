@@ -12,7 +12,18 @@ from sqlalchemy.orm import Session
 
 from app.ad_recommendations import generate_ad_recommendations, is_asin_search_term
 from app.models import AdsDaily, InventoryDaily, InventoryItem, Recommendation, SalesDaily, SearchTerm, SearchTermMetric
-from app.report_importer import _alias_map, _get, _json, build_sku_dashboard, import_report, parse_tabular_file, to_float
+from app.report_importer import (
+    _alias_map,
+    _get,
+    _json,
+    _row_marketplace,
+    _row_period,
+    build_sku_dashboard,
+    import_report,
+    parse_tabular_file,
+    row_data_hash,
+    to_float,
+)
 
 REPORT_TYPE_MAP = {
     "business_report": "business",
@@ -30,12 +41,20 @@ REPORT_TYPE_MAP = {
 TARGET_ACOS = 0.25
 
 
-def import_copilot_report(db: Session, report_type: str, file_name: str, content: bytes) -> dict[str, Any]:
+def import_copilot_report(
+    db: Session,
+    report_type: str,
+    file_name: str,
+    content: bytes,
+    duplicate_strategy: str = "prompt",
+    uploaded_by: str | None = None,
+    marketplace: str = "US",
+) -> dict[str, Any]:
     normalized = REPORT_TYPE_MAP.get(report_type, report_type)
-    batch = import_report(db, normalized, file_name, content)
+    batch = import_report(db, normalized, file_name, content, duplicate_strategy, uploaded_by, marketplace)
     synced_rows = 0
     if batch.status == "success":
-        synced_rows = _sync_copilot_tables(db, normalized, file_name, content)
+        synced_rows = _sync_copilot_tables(db, batch.id, normalized, file_name, content, duplicate_strategy, marketplace)
     generated = 0
     if normalized in {"search_terms", "campaigns"} and batch.status == "success":
         generated = generate_ad_recommendations(db)
@@ -46,30 +65,78 @@ def import_copilot_report(db: Session, report_type: str, file_name: str, content
         "row_count": batch.row_count,
         "status": batch.status,
         "error_message": batch.error_message,
+        "duplicate_count": batch.duplicate_count,
+        "period_start": batch.period_start,
+        "period_end": batch.period_end,
         "synced_rows": synced_rows,
         "generated_ad_recommendations": generated,
     }
 
 
-def _sync_copilot_tables(db: Session, report_type: str, file_name: str, content: bytes) -> int:
+def _sync_copilot_tables(
+    db: Session,
+    batch_id: int,
+    report_type: str,
+    file_name: str,
+    content: bytes,
+    duplicate_strategy: str,
+    marketplace: str,
+) -> int:
     if report_type not in {"business", "search_terms", "campaigns", "inventory"}:
         return 0
     rows = parse_tabular_file(file_name, content)
+    model_by_type = {
+        "business": SalesDaily,
+        "search_terms": SearchTerm,
+        "campaigns": AdsDaily,
+        "inventory": InventoryDaily,
+    }
+    model = model_by_type[report_type]
+    prepared = []
     for row in rows:
         alias = _alias_map(list(row.keys()))
+        row_marketplace = _row_marketplace(row, alias, marketplace)
+        report_date, period_start, period_end = _row_period(row, alias)
+        data_hash = row_data_hash(report_type, row, alias, row_marketplace)
+        prepared.append((row, alias, row_marketplace, report_date, period_start, period_end, data_hash))
+    hashes = [item[-1] for item in prepared]
+    duplicate_hashes = set()
+    if hashes:
+        duplicate_hashes = set(
+            db.execute(select(model.data_hash).where(model.data_hash.in_(hashes)).where(model.is_active.is_(True)))
+            .scalars()
+            .all()
+        )
+    if duplicate_hashes and duplicate_strategy == "overwrite":
+        db.query(model).filter(model.data_hash.in_(duplicate_hashes)).update({"is_active": False}, synchronize_session=False)
+    inserted = 0
+    for row, alias, row_marketplace, report_date, period_start, period_end, data_hash in prepared:
+        if data_hash in duplicate_hashes and duplicate_strategy == "skip":
+            continue
+        is_active = not (data_hash in duplicate_hashes and duplicate_strategy == "preserve_inactive")
         raw_json = _json(row)
+        common = {
+            "import_batch_id": batch_id,
+            "marketplace": row_marketplace,
+            "date": report_date,
+            "report_date": report_date,
+            "period_start": period_start,
+            "period_end": period_end,
+            "is_active": is_active,
+            "data_hash": data_hash,
+            "raw_json": raw_json,
+        }
         if report_type == "business":
             db.add(
                 SalesDaily(
+                    **common,
                     sku=str(_get(row, alias, "sku")).strip() or None,
                     asin=str(_get(row, alias, "asin")).strip() or None,
-                    date=None,
                     sales=to_float(_get(row, alias, "ordered_sales")),
                     orders=to_float(_get(row, alias, "orders")),
                     units=to_float(_get(row, alias, "units_ordered")),
                     sessions=to_float(_get(row, alias, "sessions")),
                     conversion_rate=to_float(_get(row, alias, "conversion_rate")),
-                    raw_json=raw_json,
                 )
             )
         elif report_type == "search_terms":
@@ -77,6 +144,7 @@ def _sync_copilot_tables(db: Session, report_type: str, file_name: str, content:
             orders = to_float(_get(row, alias, "orders")) or 0
             db.add(
                 SearchTerm(
+                    **common,
                     sku=str(_get(row, alias, "sku")).strip() or None,
                     asin=str(_get(row, alias, "asin")).strip() or None,
                     campaign_name=str(_get(row, alias, "campaign_name")).strip() or None,
@@ -92,7 +160,6 @@ def _sync_copilot_tables(db: Session, report_type: str, file_name: str, content:
                     acos=to_float(_get(row, alias, "acos")),
                     cpc=(to_float(_get(row, alias, "spend")) or 0) / clicks if clicks else None,
                     conversion_rate=orders / clicks if clicks else None,
-                    raw_json=raw_json,
                 )
             )
         elif report_type == "campaigns":
@@ -100,6 +167,7 @@ def _sync_copilot_tables(db: Session, report_type: str, file_name: str, content:
             spend = to_float(_get(row, alias, "spend")) or 0
             db.add(
                 AdsDaily(
+                    **common,
                     campaign_name=str(_get(row, alias, "campaign_name")).strip() or None,
                     impressions=to_float(_get(row, alias, "impressions")),
                     clicks=clicks,
@@ -108,23 +176,23 @@ def _sync_copilot_tables(db: Session, report_type: str, file_name: str, content:
                     orders=to_float(_get(row, alias, "orders")),
                     acos=to_float(_get(row, alias, "acos")),
                     cpc=spend / clicks if clicks else None,
-                    raw_json=raw_json,
                 )
             )
         elif report_type == "inventory":
             db.add(
                 InventoryDaily(
+                    **common,
                     sku=str(_get(row, alias, "sku")).strip() or None,
                     asin=str(_get(row, alias, "asin")).strip() or None,
                     available=to_float(_get(row, alias, "available")),
                     inbound=to_float(_get(row, alias, "inbound")),
                     reserved=to_float(_get(row, alias, "reserved")),
                     days_of_supply=to_float(_get(row, alias, "days_of_supply")),
-                    raw_json=raw_json,
                 )
             )
+        inserted += 1
     db.commit()
-    return len(rows)
+    return inserted
 
 
 def sku_health_center(db: Session) -> list[dict[str, Any]]:
@@ -177,7 +245,11 @@ def sku_health_center(db: Session) -> list[dict[str, Any]]:
 
 
 def ads_diagnosis_center(db: Session, target_acos: float = TARGET_ACOS) -> dict[str, Any]:
-    rows = db.execute(select(SearchTermMetric).order_by(desc(SearchTermMetric.spend))).scalars().all()
+    rows = (
+        db.execute(select(SearchTermMetric).where(SearchTermMetric.is_active.is_(True)).order_by(desc(SearchTermMetric.spend)))
+        .scalars()
+        .all()
+    )
     diagnosis = {
         "profitable_terms": [],
         "potential_terms": [],
@@ -301,7 +373,11 @@ def daily_operations_report(db: Session) -> dict[str, Any]:
 
 def _latest_inventory_by_key(db: Session) -> dict[str, dict[str, Any]]:
     result: dict[str, dict[str, Any]] = {}
-    rows = db.execute(select(InventoryItem).order_by(desc(InventoryItem.created_at))).scalars().all()
+    rows = (
+        db.execute(select(InventoryItem).where(InventoryItem.is_active.is_(True)).order_by(desc(InventoryItem.created_at)))
+        .scalars()
+        .all()
+    )
     for row in rows:
         data = {"days_of_supply": row.days_of_supply, "available": row.available, "inbound": row.inbound}
         for key in [row.sku, row.asin]:

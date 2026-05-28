@@ -14,7 +14,10 @@
 ## 数据流
 
 1. 上传 CSV / Excel 报表。
-2. FastAPI 解析字段并写入数据库。
-3. 规则引擎计算 SKU 健康分、广告搜索词诊断、库存风险和利润。
-4. 生成中文每日运营建议。
-5. 用户人工确认执行，不自动改广告后台。
+2. FastAPI 为每次上传创建 `import_batches` 记录，上传时间只代表文件进入系统的时间。
+3. 解析报表里的 `Date / 日期` 作为 `report_date`，并保存 `period_start / period_end`。
+4. 业务行写入 `import_batch_id`、`is_active`、`data_hash`，用于追踪批次和去重。
+5. 重复数据按 marketplace + SKU/ASIN + report_date + campaign/search term 等维度识别。
+6. 用户选择覆盖旧数据、跳过重复数据，或保留为不参与默认分析的新批次。
+7. 规则引擎默认只读取 `is_active = true` 的数据，计算 SKU 健康、广告诊断、库存风险和利润。
+8. 生成中文每日运营建议，用户人工确认执行，不自动改广告后台。

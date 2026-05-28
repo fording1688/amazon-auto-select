@@ -44,9 +44,23 @@
       {% endfor %}
     </select>
     <input type="file" name="file" accept=".csv,.tsv,.xlsx,.xlsm" required>
+    <input type="text" name="marketplace" value="US" placeholder="站点">
+    <input type="text" name="uploaded_by" placeholder="上传人">
+    <select name="duplicate_strategy">
+      <option value="prompt">重复时提示</option>
+      <option value="overwrite">覆盖旧数据</option>
+      <option value="skip">跳过重复数据</option>
+      <option value="preserve_inactive">保留新批次但不参与分析</option>
+    </select>
     <button type="submit">上传并分析</button>
   </form>
   <form class="inline-form" method="post" action="/imports/scan-inbox">
+    <select name="duplicate_strategy">
+      <option value="prompt">重复时提示</option>
+      <option value="overwrite">覆盖旧数据</option>
+      <option value="skip">跳过重复数据</option>
+      <option value="preserve_inactive">保留新批次但不参与分析</option>
+    </select>
     <button type="submit">扫描并导入 inbox</button>
     <span class="muted">当前待导入 {{ pending_files|length }} 个文件。把 CSV/XLSX 丢进 <code>{{ inbox_path }}</code> 后点这里。</span>
   </form>
@@ -80,6 +94,8 @@
         <th>文件</th>
         <th>识别类型</th>
         <th>行数</th>
+        <th>重复</th>
+        <th>数据周期</th>
         <th>状态</th>
         <th>错误</th>
         <th>归档位置</th>
@@ -169,9 +185,17 @@ amazon_reports/failed/     识别或导入失败后归档</pre>
         <td>{{ report_types.get(batch.report_type, batch.report_type) }}</td>
         <td>{{ batch.file_name }}</td>
         <td>{{ batch.row_count }}</td>
+        <td>{{ batch.duplicate_count or 0 }}</td>
+        <td>
+          {% if batch.period_start or batch.period_end %}
+            {{ batch.period_start.strftime("%Y-%m-%d") if batch.period_start else "" }} - {{ batch.period_end.strftime("%Y-%m-%d") if batch.period_end else "" }}
+          {% else %}
+            -
+          {% endif %}
+        </td>
         <td><span class="badge {{ batch.status }}">{{ batch.status }}</span></td>
         <td>{{ batch.error_message or "" }}</td>
-        <td>{{ batch.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+        <td>{{ (batch.uploaded_at or batch.created_at).strftime("%Y-%m-%d %H:%M:%S") }}</td>
       </tr>
       {% endfor %}
     </tbody>

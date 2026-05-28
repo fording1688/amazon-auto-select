@@ -114,6 +114,18 @@ npm run dev
 
 第一版只生成运营建议，不自动修改亚马逊广告后台。
 
+### 报表批次和重复数据规则
+
+- 每次上传都会创建 `import_batches` 记录，保存文件名、报表类型、上传时间、上传人、站点、数据周期、状态和重复数量。
+- `uploaded_at` 只表示上传时间，不当作业务日期；系统优先读取报表里的 `Date / 日期` 作为 `report_date`。
+- 业务数据表会记录 `import_batch_id`、`report_date`、`period_start`、`period_end`、`is_active`、`data_hash`。
+- 默认分析只读取 `is_active = true` 的数据。
+- 发现同站点、同 SKU/ASIN、同业务日期、同 campaign/search term 等维度重复时，可选择：
+  - 覆盖旧数据：旧行设为 inactive，新行参与分析。
+  - 跳过重复数据：只导入非重复行。
+  - 保留为新批次但不参与默认分析：新行设为 inactive。
+  - 重复时提示：创建批次并提示，不写入业务行。
+
 ## 后续接真实 Amazon API
 
 统一入口在 `app/amazon_api_client.py`：

@@ -14,11 +14,37 @@ create table if not exists products (
 create index if not exists idx_products_sku on products(sku);
 create index if not exists idx_products_asin on products(asin);
 
+create table if not exists import_batches (
+  id bigserial primary key,
+  report_type text not null,
+  file_name text not null,
+  marketplace text default 'US',
+  uploaded_by text,
+  uploaded_at timestamptz default now(),
+  period_start date,
+  period_end date,
+  duplicate_strategy text,
+  duplicate_count integer default 0,
+  row_count integer default 0,
+  status text default 'success',
+  error_message text,
+  created_at timestamptz default now()
+);
+create index if not exists idx_import_batches_type on import_batches(report_type);
+create index if not exists idx_import_batches_uploaded_at on import_batches(uploaded_at);
+
 create table if not exists sales_daily (
   id bigserial primary key,
+  import_batch_id bigint references import_batches(id),
+  marketplace text default 'US',
   sku text,
   asin text,
   date date,
+  report_date date,
+  period_start date,
+  period_end date,
+  is_active boolean default true,
+  data_hash text,
   sales numeric,
   orders numeric,
   units numeric,
@@ -27,13 +53,21 @@ create table if not exists sales_daily (
   raw_json jsonb,
   created_at timestamptz default now()
 );
+create index if not exists idx_sales_daily_active_hash on sales_daily(is_active, data_hash);
 
 create table if not exists ads_daily (
   id bigserial primary key,
+  import_batch_id bigint references import_batches(id),
+  marketplace text default 'US',
   sku text,
   asin text,
   campaign_name text,
   date date,
+  report_date date,
+  period_start date,
+  period_end date,
+  is_active boolean default true,
+  data_hash text,
   impressions numeric,
   clicks numeric,
   spend numeric,
@@ -44,9 +78,12 @@ create table if not exists ads_daily (
   raw_json jsonb,
   created_at timestamptz default now()
 );
+create index if not exists idx_ads_daily_active_hash on ads_daily(is_active, data_hash);
 
 create table if not exists search_terms (
   id bigserial primary key,
+  import_batch_id bigint references import_batches(id),
+  marketplace text default 'US',
   sku text,
   asin text,
   campaign_name text,
@@ -55,6 +92,11 @@ create table if not exists search_terms (
   match_type text,
   customer_search_term text,
   date date,
+  report_date date,
+  period_start date,
+  period_end date,
+  is_active boolean default true,
+  data_hash text,
   impressions numeric,
   clicks numeric,
   spend numeric,
@@ -67,12 +109,20 @@ create table if not exists search_terms (
   raw_json jsonb,
   created_at timestamptz default now()
 );
+create index if not exists idx_search_terms_active_hash on search_terms(is_active, data_hash);
 
 create table if not exists inventory_daily (
   id bigserial primary key,
+  import_batch_id bigint references import_batches(id),
+  marketplace text default 'US',
   sku text,
   asin text,
   date date,
+  report_date date,
+  period_start date,
+  period_end date,
+  is_active boolean default true,
+  data_hash text,
   available numeric,
   inbound numeric,
   reserved numeric,
@@ -80,6 +130,7 @@ create table if not exists inventory_daily (
   raw_json jsonb,
   created_at timestamptz default now()
 );
+create index if not exists idx_inventory_daily_active_hash on inventory_daily(is_active, data_hash);
 
 create table if not exists competitor_products (
   id bigserial primary key,

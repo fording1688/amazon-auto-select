@@ -85,10 +85,21 @@ async def upload_report(
     request: Request,
     report_type: str = Form(...),
     file: UploadFile = File(...),
+    duplicate_strategy: str = Form("prompt"),
+    uploaded_by: str = Form(""),
+    marketplace: str = Form("US"),
     db: Session = Depends(get_db),
 ):
     content = await file.read()
-    batch = import_report(db, report_type, file.filename or "uploaded_file", content)
+    batch = import_report(
+        db,
+        report_type,
+        file.filename or "uploaded_file",
+        content,
+        duplicate_strategy=duplicate_strategy,
+        uploaded_by=uploaded_by or None,
+        marketplace=marketplace or "US",
+    )
     generated_count = None
     if batch.status == "success" and report_type in AD_REPORT_TYPES:
         generated_count = generate_ad_recommendations(db)
@@ -103,6 +114,9 @@ async def upload_report(
                 "status": batch.status,
                 "row_count": batch.row_count,
                 "error_message": batch.error_message,
+                "duplicate_count": batch.duplicate_count,
+                "period_start": batch.period_start,
+                "period_end": batch.period_end,
                 "generated_ad_recommendations": generated_count,
             },
         ),
@@ -110,9 +124,13 @@ async def upload_report(
 
 
 @router.post("/imports/scan-inbox")
-def scan_report_inbox(request: Request, db: Session = Depends(get_db)):
+def scan_report_inbox(
+    request: Request,
+    duplicate_strategy: str = Form("prompt"),
+    db: Session = Depends(get_db),
+):
     before_files = _pending_inbox_files()
-    results = scan_inbox(db)
+    results = scan_inbox(db, duplicate_strategy=duplicate_strategy)
     success_count = sum(1 for item in results if item["status"] == "success")
     failed_count = sum(1 for item in results if item["status"] == "failed")
     generated_count = None

@@ -13,6 +13,9 @@ const reportTypes = [
 
 export default function UploadsPage() {
   const [reportType, setReportType] = useState<(typeof reportTypes)[number][0]>('business_report');
+  const [duplicateStrategy, setDuplicateStrategy] = useState('prompt');
+  const [uploadedBy, setUploadedBy] = useState('');
+  const [marketplace, setMarketplace] = useState('US');
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Record<string, any> | null>(null);
@@ -26,6 +29,9 @@ export default function UploadsPage() {
     }
     const form = new FormData();
     form.append('file', file);
+    form.append('duplicate_strategy', duplicateStrategy);
+    form.append('uploaded_by', uploadedBy);
+    form.append('marketplace', marketplace);
     setLoading(true);
     setError('');
     setResult(null);
@@ -61,6 +67,39 @@ export default function UploadsPage() {
           {reportTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select>
 
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="block text-sm font-semibold text-slate-700">站点</label>
+            <input
+              className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"
+              value={marketplace}
+              onChange={(event) => setMarketplace(event.target.value)}
+              placeholder="US"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-slate-700">上传人</label>
+            <input
+              className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"
+              value={uploadedBy}
+              onChange={(event) => setUploadedBy(event.target.value)}
+              placeholder="可选"
+            />
+          </div>
+        </div>
+
+        <label className="mt-4 block text-sm font-semibold text-slate-700">重复数据处理</label>
+        <select
+          className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"
+          value={duplicateStrategy}
+          onChange={(event) => setDuplicateStrategy(event.target.value)}
+        >
+          <option value="prompt">发现重复时先提示，不导入业务行</option>
+          <option value="overwrite">覆盖旧数据：旧行设为 inactive，新行参与分析</option>
+          <option value="skip">跳过重复数据：只导入非重复行</option>
+          <option value="preserve_inactive">保留为新批次但不参与默认分析</option>
+        </select>
+
         <label className="mt-4 block text-sm font-semibold text-slate-700">文件</label>
         <input
           className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"
@@ -84,6 +123,9 @@ export default function UploadsPage() {
             <Info label="行数" value={result.row_count} />
             <Info label="同步新表行数" value={result.synced_rows} />
             <Info label="状态" value={result.status} />
+            <Info label="重复数据" value={result.duplicate_count} />
+            <Info label="数据开始日期" value={result.period_start || '-'} />
+            <Info label="数据结束日期" value={result.period_end || '-'} />
             <Info label="广告建议数" value={result.generated_ad_recommendations} />
             <Info label="错误" value={result.error_message || '-'} />
           </dl>

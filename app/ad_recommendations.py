@@ -56,6 +56,7 @@ def _avg_bid_for(db: Session, campaign_name: str, ad_group_name: str, targeting:
     target = (
         db.execute(
             select(TargetingMetric)
+            .where(TargetingMetric.is_active.is_(True))
             .where(TargetingMetric.campaign_name == campaign_name)
             .where(TargetingMetric.ad_group_name == ad_group_name)
             .where(TargetingMetric.targeting == targeting)
@@ -71,6 +72,7 @@ def _campaign_budget(db: Session, campaign_name: str) -> float | None:
     campaign = (
         db.execute(
             select(CampaignMetric)
+            .where(CampaignMetric.is_active.is_(True))
             .where(CampaignMetric.campaign_name == campaign_name)
             .order_by(desc(CampaignMetric.created_at))
             .limit(1)
@@ -84,6 +86,7 @@ def _budget_limited(db: Session, campaign_name: str) -> bool:
     campaign = (
         db.execute(
             select(CampaignMetric)
+            .where(CampaignMetric.is_active.is_(True))
             .where(CampaignMetric.campaign_name == campaign_name)
             .order_by(desc(CampaignMetric.created_at))
             .limit(1)
@@ -101,14 +104,22 @@ def _budget_limited(db: Session, campaign_name: str) -> bool:
 
 
 def _reference_maps(db: Session) -> tuple[dict[tuple[str, str, str], float], dict[str, dict[str, Any]]]:
-    target_rows = db.execute(select(TargetingMetric).order_by(desc(TargetingMetric.created_at))).scalars().all()
+    target_rows = (
+        db.execute(select(TargetingMetric).where(TargetingMetric.is_active.is_(True)).order_by(desc(TargetingMetric.created_at)))
+        .scalars()
+        .all()
+    )
     bid_by_key = {}
     for row in target_rows:
         key = (row.campaign_name or "", row.ad_group_name or "", row.targeting or "")
         if key not in bid_by_key and row.bid is not None:
             bid_by_key[key] = row.bid
 
-    campaign_rows = db.execute(select(CampaignMetric).order_by(desc(CampaignMetric.created_at))).scalars().all()
+    campaign_rows = (
+        db.execute(select(CampaignMetric).where(CampaignMetric.is_active.is_(True)).order_by(desc(CampaignMetric.created_at)))
+        .scalars()
+        .all()
+    )
     campaign_by_name = {}
     for row in campaign_rows:
         name = row.campaign_name or ""
@@ -218,7 +229,7 @@ def build_execution_plan(recommendation: AdRecommendation) -> dict[str, Any]:
 
 def _candidate_recommendations(db: Session) -> list[dict[str, Any]]:
     settings = get_settings()
-    rows = db.execute(select(SearchTermMetric)).scalars().all()
+    rows = db.execute(select(SearchTermMetric).where(SearchTermMetric.is_active.is_(True))).scalars().all()
     bid_by_key, campaign_by_name = _reference_maps(db)
     grouped: dict[tuple[str, str, str, str, str], dict[str, Any]] = defaultdict(lambda: defaultdict(float))
     for row in rows:
