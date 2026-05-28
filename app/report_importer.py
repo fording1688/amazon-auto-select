@@ -128,6 +128,7 @@ class SkuSummary:
     sku: str
     asin: str
     title: str
+    image_url: str
     sales: float
     units: float
     sessions: float
@@ -763,7 +764,14 @@ def build_sku_dashboard(db: Session) -> list[SkuSummary]:
     for listing in listings:
         key = listing.sku or listing.asin
         if key:
-            meta[key].update({"sku": listing.sku or key, "asin": listing.asin or meta[key].get("asin", ""), "title": listing.title or meta[key].get("title", "")})
+            meta[key].update(
+                {
+                    "sku": listing.sku or key,
+                    "asin": listing.asin or meta[key].get("asin", ""),
+                    "title": listing.title or meta[key].get("title", ""),
+                    "image_url": listing.main_image_url or meta[key].get("image_url", ""),
+                }
+            )
 
     summaries = []
     for key, values in by_sku.items():
@@ -801,6 +809,7 @@ def build_sku_dashboard(db: Session) -> list[SkuSummary]:
                 sku=meta[key].get("sku") or key,
                 asin=meta[key].get("asin") or "",
                 title=meta[key].get("title") or "",
+                image_url=meta[key].get("image_url") or "",
                 sales=sales,
                 units=units,
                 sessions=sessions,

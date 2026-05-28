@@ -227,6 +227,7 @@ def sku_health_center(db: Session) -> list[dict[str, Any]]:
                 "sku": row.sku,
                 "asin": row.asin,
                 "title": row.title,
+                "image_url": row.image_url,
                 "sales": row.sales,
                 "orders": row.units,
                 "ad_spend": row.ad_spend,
