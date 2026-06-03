@@ -39,7 +39,32 @@ export default function ListingProjectsPage() {
     try {
       const response = await authFetch(`/api/listing-projects/${projectId}/copy`, { method: 'POST' });
       const data = await readApiJson(response);
-      if (!response.ok) throw new Error(data.detail || '复制失败');
+      if (!response.ok && response.status !== 404) throw new Error(data.detail || '复制失败');
+      if (!response.ok && response.status === 404) {
+        const detailResponse = await authFetch(`/api/listing-projects/${projectId}`, { cache: 'no-store' });
+        const detail = await readApiJson(detailResponse);
+        if (!detailResponse.ok) throw new Error(detail.detail || '读取项目失败，无法复制');
+        const project = detail.project || {};
+        const createResponse = await authFetch('/api/listing-projects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            project_name: `${project.project_name || project.product_name || 'Listing 项目'} - 副本`,
+            marketplace: project.marketplace || 'US',
+            brand: project.brand || '',
+            category: project.category || '',
+            product_name: project.product_name || '',
+            target_price: project.target_price || '',
+            fulfillment_method: project.fulfillment_method || '',
+            notes: project.notes || '',
+            inputs: detail.inputs || {},
+          }),
+        });
+        const created = await readApiJson(createResponse);
+        if (!createResponse.ok) throw new Error(created.detail || '复制失败');
+        router.push(`/listing-projects/detail?id=${created.id}`);
+        return;
+      }
       router.push(`/listing-projects/detail?id=${data.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : '复制失败');
@@ -61,8 +86,8 @@ export default function ListingProjectsPage() {
 
       <section className="overflow-x-auto rounded-lg border bg-white p-4">
         {loading && <p className="py-8 text-center text-slate-500">加载中...</p>}
-        {error && <p className="py-8 text-center text-red-600">{error}</p>}
-        {!loading && !error && (
+        {error && <p className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+        {!loading && (
           <>
             <table className="w-full text-left text-sm">
               <thead className="border-b text-slate-500">
