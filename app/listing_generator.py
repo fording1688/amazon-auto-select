@@ -92,7 +92,41 @@ def _safe_float(value: Any) -> float | None:
     return float(match.group(0)) if match else None
 
 
-def _build_ai_context(project: ListingProject, inputs: ListingProjectInput | None, competitors: list[CompetitorReference], selected_model: str | None = None) -> dict[str, Any]:
+def _safe_count(value: Any, default: int = 5, min_value: int = 1, max_value: int = 10) -> int:
+    try:
+        count = int(float(value))
+    except (TypeError, ValueError):
+        count = default
+    return max(min_value, min(max_value, count))
+
+
+def _url_reference_summary(url: str | None) -> dict[str, Any]:
+    text = _text(url)
+    if not text:
+        return {"asin": "", "slug_terms": [], "inferred_title": ""}
+    asin_match = re.search(r"/(?:dp|gp/product)/([A-Z0-9]{10})", text, flags=re.I)
+    cleaned = re.sub(r"https?://|www\.|amazon\.com|dp|gp|product|ref|qid|keywords|[A-Z0-9]{10}", " ", text, flags=re.I)
+    cleaned = re.sub(r"[/_?=&.%+-]+", " ", cleaned)
+    terms = [
+        word.lower()
+        for word in re.findall(r"[A-Za-z][A-Za-z0-9-]{2,}", cleaned)
+        if word.lower() not in {"com", "www", "amazon", "the", "and", "for", "with"}
+    ]
+    return {
+        "asin": asin_match.group(1).upper() if asin_match else "",
+        "slug_terms": terms[:24],
+        "inferred_title": " ".join(terms[:18]),
+    }
+
+
+def _build_ai_context(
+    project: ListingProject,
+    inputs: ListingProjectInput | None,
+    competitors: list[CompetitorReference],
+    selected_model: str | None = None,
+    version_count: int = 5,
+    product_reference_image: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     input_data = {}
     if inputs:
         input_data = {
@@ -102,14 +136,14 @@ def _build_ai_context(project: ListingProject, inputs: ListingProjectInput | Non
         }
     competitor_data = []
     for index, ref in enumerate(competitors[:12], start=1):
-        asin = ""
-        if ref.competitor_url:
-            asin = (re.search(r"/dp/([A-Z0-9]{10})", ref.competitor_url, flags=re.I) or re.search(r"/gp/product/([A-Z0-9]{10})", ref.competitor_url, flags=re.I) or [None, ""])[1]
+        url_summary = _url_reference_summary(ref.competitor_url)
         competitor_data.append(
             {
                 "ref_id": f"COMP-{index:02d}",
                 "url": ref.competitor_url,
-                "asin": asin,
+                "asin": url_summary["asin"],
+                "slug_terms": url_summary["slug_terms"],
+                "inferred_title_from_url": url_summary["inferred_title"],
                 "what_to_reference": ref.what_to_reference,
                 "what_to_avoid": ref.what_to_avoid,
             }
@@ -125,6 +159,8 @@ def _build_ai_context(project: ListingProject, inputs: ListingProjectInput | Non
         "competitor_references": competitor_data,
         "derived_competitor_terms": _competitor_terms(competitors, limit=20),
         "selected_model": _text(selected_model),
+        "version_count": version_count,
+        "product_reference_image": product_reference_image or {},
         "privacy_note": "Do not infer or expose seller identity, account, email, store name, supplier, cost, or private operational data.",
     }
 
@@ -149,6 +185,8 @@ Seller goal:
 - Build a practical Amazon US listing draft for a niche tool/consumable/replacement product.
 - Prefer clear specs, compatibility wording, package quantity, use cases, and buyer risk reduction.
 - If compatibility is involved, use "Compatible with" / "Replacement for" style wording and avoid official affiliation claims.
+- Deeply use competitor links as reference: infer keywords, product positioning, image module ideas, packaging angle, compatibility wording, and selling point structure from URL slugs, ASIN references, and seller notes.
+- For image prompts, the seller's own main product reference image controls product appearance. Competitor links are only for module/storyboard inspiration. Do not repeat generic "Use the uploaded product photo..." in every prompt; state concise reference usage once where useful.
 - Do not include private seller identity or store data.
 
 Context JSON:
@@ -171,6 +209,7 @@ Required JSON shape:
 
 
 def _ai_listing_data(context: dict[str, Any]) -> dict[str, Any] | None:
+    count = _safe_count(context.get("version_count"), default=5, max_value=10)
     schema = """{
   "versions": [
     {
@@ -186,10 +225,11 @@ def _ai_listing_data(context: dict[str, Any]) -> dict[str, Any] | None:
     }
   ]
 }"""
-    return _call_listing_llm("Generate 5 differentiated Amazon listing copy versions.", context, schema, context.get("selected_model"))
+    return _call_listing_llm(f"Generate exactly {count} differentiated Amazon listing copy versions.", context, schema, context.get("selected_model"))
 
 
 def _ai_image_prompt_data(context: dict[str, Any]) -> dict[str, Any] | None:
+    count = _safe_count(context.get("version_count"), default=9, max_value=20)
     schema = """{
   "image_prompts": [
     {
@@ -207,7 +247,12 @@ def _ai_image_prompt_data(context: dict[str, Any]) -> dict[str, Any] | None:
     }
   ]
 }"""
-    return _call_listing_llm("Generate Amazon listing image and A+ image prompts.", context, schema, context.get("selected_model"))
+    return _call_listing_llm(
+        f"Generate exactly {count} Amazon image prompts. Cover the most important listing images first, then A+ modules if count allows.",
+        context,
+        schema,
+        context.get("selected_model"),
+    )
 
 
 def _ai_aplus_data(context: dict[str, Any]) -> dict[str, Any] | None:
@@ -426,16 +471,24 @@ def _risk_notes(inputs: ListingProjectInput | None) -> str:
     return "避免使用高风险表达：" + ", ".join(risky) + "。兼容性产品避免 official/original/authorized，优先使用 Compatible with / Replacement for。"
 
 
-def generate_listing_versions(db: Session, project_id: int, user_id: int | None = None, model: str | None = None) -> list[ListingVersion]:
+def generate_listing_versions(
+    db: Session,
+    project_id: int,
+    user_id: int | None = None,
+    model: str | None = None,
+    version_count: int = 5,
+    product_reference_image: dict[str, Any] | None = None,
+) -> list[ListingVersion]:
     project, inputs, competitors = _context(db, project_id, user_id=user_id)
     selected_model = _text(model) or get_settings().openai_model
+    count = _safe_count(version_count, default=5, max_value=10)
     try:
-        ai_data = _ai_listing_data(_build_ai_context(project, inputs, competitors, selected_model=selected_model))
+        ai_data = _ai_listing_data(_build_ai_context(project, inputs, competitors, selected_model=selected_model, version_count=count, product_reference_image=product_reference_image))
     except Exception:
         ai_data = None
     if ai_data and _as_list(ai_data.get("versions")):
         created = []
-        for index, item in enumerate(_as_list(ai_data.get("versions"), limit=5), start=1):
+        for index, item in enumerate(_as_list(ai_data.get("versions"), limit=count), start=1):
             bullets = [str(bullet or "").strip() for bullet in _as_list(item.get("bullet_points"), limit=5)]
             bullets = (bullets + [""] * 5)[:5]
             version = ListingVersion(
@@ -491,7 +544,7 @@ def generate_listing_versions(db: Session, project_id: int, user_id: int | None 
         ("Listing Version 5 - 专业客户版", f"{primary} for Professional Workshop Use, {material} {size}".strip(" ,")),
     ]
     created = []
-    for index, (name, title) in enumerate(variants, start=1):
+    for index, (name, title) in enumerate(variants[:count], start=1):
         bullets = [
             f"Accurate Fit and Specs: Designed for {compatibility or 'selected compatible applications'} with clear size/specification reference: {size or 'see product details'}.",
             f"Built for Real Use: {material or 'Durable construction'} supports {use_cases or 'daily workshop, repair, and replacement tasks'}.",
@@ -542,16 +595,24 @@ IMAGE_TYPES = [
 ]
 
 
-def generate_image_prompts(db: Session, project_id: int, user_id: int | None = None, model: str | None = None) -> list[ImagePromptVersion]:
+def generate_image_prompts(
+    db: Session,
+    project_id: int,
+    user_id: int | None = None,
+    model: str | None = None,
+    version_count: int = 9,
+    product_reference_image: dict[str, Any] | None = None,
+) -> list[ImagePromptVersion]:
     project, inputs, competitors = _context(db, project_id, user_id=user_id)
     selected_model = _text(model) or get_settings().openai_model
+    count = _safe_count(version_count, default=9, max_value=20)
     try:
-        ai_data = _ai_image_prompt_data(_build_ai_context(project, inputs, competitors, selected_model=selected_model))
+        ai_data = _ai_image_prompt_data(_build_ai_context(project, inputs, competitors, selected_model=selected_model, version_count=count, product_reference_image=product_reference_image))
     except Exception:
         ai_data = None
     if ai_data and _as_list(ai_data.get("image_prompts")):
         created = []
-        for index, item in enumerate(_as_list(ai_data.get("image_prompts"), limit=9), start=1):
+        for index, item in enumerate(_as_list(ai_data.get("image_prompts"), limit=count), start=1):
             prompt = ImagePromptVersion(
                 project_id=project_id,
                 version_name=_text(item.get("version_name")) or f"AI Image Prompt {index}",
@@ -564,7 +625,7 @@ def generate_image_prompts(db: Session, project_id: int, user_id: int | None = N
                 prompt_cn=_text(item.get("prompt_cn")),
                 negative_prompt=_text(item.get("negative_prompt")) or "Do not copy competitor images, logos, brand elements, or misleading accessories.",
                 size_recommendation=_text(item.get("size_recommendation")) or "Amazon square 2000x2000 for listing images.",
-                notes=_text(item.get("notes")) or f"AI generated via {selected_model}.",
+                notes=(_text(item.get("notes")) or "AI generated image prompt.") + f" Model: {selected_model}.",
             )
             db.add(prompt)
             created.append(prompt)
@@ -577,9 +638,10 @@ def generate_image_prompts(db: Session, project_id: int, user_id: int | None = N
     product = project.product_name or project.project_name
     competitor_note = "Use competitor reference only as layout inspiration. Do not copy exact design, text, logo, brand, product appearance, or copyrighted elements."
     created = []
-    for image_type, goal in IMAGE_TYPES:
+    reference_label = _text((product_reference_image or {}).get("file_name")) or _text((product_reference_image or {}).get("note")) or "seller main product reference image"
+    for image_type, goal in IMAGE_TYPES[:count]:
         main_rules = (
-            "Use the uploaded product photo as the exact product reference. Keep product shape, size, material, color, and quantity consistent. "
+            f"Keep the product appearance consistent with {reference_label}: shape, material, color, size relationship, and package quantity. "
             "Do not add misleading accessories."
         )
         if image_type == "Main Image":
@@ -627,11 +689,18 @@ def generate_image_prompts(db: Session, project_id: int, user_id: int | None = N
     return created
 
 
-def generate_aplus_version(db: Session, project_id: int, user_id: int | None = None, model: str | None = None) -> AplusVersion:
+def generate_aplus_version(
+    db: Session,
+    project_id: int,
+    user_id: int | None = None,
+    model: str | None = None,
+    version_count: int = 1,
+    product_reference_image: dict[str, Any] | None = None,
+) -> AplusVersion:
     project, inputs, competitors = _context(db, project_id, user_id=user_id)
     selected_model = _text(model) or get_settings().openai_model
     try:
-        ai_data = _ai_aplus_data(_build_ai_context(project, inputs, competitors, selected_model=selected_model))
+        ai_data = _ai_aplus_data(_build_ai_context(project, inputs, competitors, selected_model=selected_model, version_count=_safe_count(version_count, default=1, max_value=5), product_reference_image=product_reference_image))
     except Exception:
         ai_data = None
     if ai_data and isinstance(ai_data.get("aplus"), dict):

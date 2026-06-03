@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useState } from 'react';
 import { authFetch } from '@/lib/api';
 import ListingSubnav from '../listing-subnav';
 
@@ -32,6 +32,8 @@ export default function ListingProjectDetailPage({ params }: { params: { id: str
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
+  const [versionCount, setVersionCount] = useState(5);
+  const [referenceImage, setReferenceImage] = useState<{ file_name?: string; note?: string; preview?: string }>({});
   const [projectMessage, setProjectMessage] = useState('');
   const [competitorMessage, setCompetitorMessage] = useState('');
 
@@ -51,7 +53,14 @@ export default function ListingProjectDetailPage({ params }: { params: { id: str
       const response = await authFetch(`/api/listing-projects/${params.id}/${path}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: selectedModel }),
+        body: JSON.stringify({
+          model: selectedModel,
+          version_count: versionCount,
+          product_reference_image: {
+            file_name: referenceImage.file_name || '',
+            note: referenceImage.note || '',
+          },
+        }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.detail || '生成失败');
@@ -62,6 +71,12 @@ export default function ListingProjectDetailPage({ params }: { params: { id: str
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleReferenceImage(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setReferenceImage((current) => ({ ...current, file_name: file.name, preview: URL.createObjectURL(file) }));
   }
 
   async function saveProject(event: FormEvent<HTMLFormElement>) {
@@ -203,6 +218,41 @@ export default function ListingProjectDetailPage({ params }: { params: { id: str
             ))}
           </select>
         </label>
+        <div className="mt-4 grid gap-4 lg:grid-cols-3">
+          <label className="block text-sm font-semibold text-slate-700">
+            生成版本数
+            <input
+              className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"
+              min={1}
+              max={20}
+              type="number"
+              value={versionCount}
+              onChange={(event) => setVersionCount(Math.max(1, Math.min(20, Number(event.target.value) || 1)))}
+            />
+          </label>
+          <label className="block text-sm font-semibold text-slate-700">
+            上传你的产品主图参考
+            <input className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2" accept="image/*" type="file" onChange={handleReferenceImage} />
+          </label>
+          <label className="block text-sm font-semibold text-slate-700">
+            主图参考说明，可选
+            <input
+              className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"
+              placeholder="例如：以这个黑色磨轮外观、孔径和包装数量为准"
+              value={referenceImage.note || ''}
+              onChange={(event) => setReferenceImage((current) => ({ ...current, note: event.target.value }))}
+            />
+          </label>
+        </div>
+        {referenceImage.preview && (
+          <div className="mt-3 flex items-center gap-3 rounded bg-slate-50 p-3 text-sm text-slate-600">
+            <img alt="主图参考预览" className="h-16 w-16 rounded object-contain ring-1 ring-slate-200" src={referenceImage.preview} />
+            <div>
+              <div className="font-semibold text-slate-800">{referenceImage.file_name}</div>
+              <div>生成图片 Prompt 时，会要求后续图片保持这个主图产品外观一致；同行链接只用于借鉴结构和卖点，不复制。</div>
+            </div>
+          </div>
+        )}
         <div className="mt-4 flex flex-wrap gap-3">
           <button className="rounded-md bg-blue-700 px-4 py-2 font-semibold text-white disabled:opacity-50" disabled={loading} onClick={() => generate('generate-listing', 'Listing 文案')}>生成 Listing 文案</button>
           <button className="rounded-md bg-blue-700 px-4 py-2 font-semibold text-white disabled:opacity-50" disabled={loading} onClick={() => generate('generate-image-prompts', '图片 Prompt')}>生成图片 Prompt</button>
@@ -376,16 +426,27 @@ function InfoBlock({ data }: { data: Record<string, any> }) {
 }
 
 function ListingCard({ item }: { item: any }) {
+  const bullets = [item.bullet_1, item.bullet_2, item.bullet_3, item.bullet_4, item.bullet_5].filter(Boolean);
+  const allText = [
+    item.title,
+    ...bullets,
+    item.description,
+    item.backend_search_terms ? `Backend Search Terms: ${item.backend_search_terms}` : '',
+  ].filter(Boolean).join('\n\n');
   return (
     <article className="rounded border bg-slate-50 p-4">
-      <h3 className="font-bold">{item.version_name}</h3>
-      <p className="mt-2 font-semibold">{item.title}</p>
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="font-bold">{item.version_name}</h3>
+        <CopyButton text={allText} />
+      </div>
+      <CopyBlock title="Title" text={item.title} />
       <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm">
-        {[item.bullet_1, item.bullet_2, item.bullet_3, item.bullet_4, item.bullet_5].map((bullet, index) => <li key={index}>{bullet}</li>)}
+        {bullets.map((bullet, index) => <li key={index}>{bullet}</li>)}
       </ol>
-      <p className="mt-3 whitespace-pre-wrap text-sm">{item.description}</p>
-      <div className="mt-3 rounded bg-white p-3 text-sm"><strong>Backend Search Terms:</strong> {item.backend_search_terms || '-'}</div>
+      <CopyBlock title="Description" text={item.description} />
+      <CopyBlock title="Backend Search Terms" text={item.backend_search_terms} />
       <p className="mt-2 text-xs text-slate-500">SEO {item.seo_score || '-'} · Conversion {item.conversion_score || '-'} · {item.compliance_risk_notes}</p>
+      {item.generation_notes && <p className="mt-1 text-xs text-slate-500">{item.generation_notes}</p>}
     </article>
   );
 }
@@ -401,14 +462,27 @@ function PromptCard({ item }: { item: any }) {
       </div>
       <CopyBlock title="Negative Prompt" text={item.negative_prompt} />
       <p className="mt-2 text-sm text-slate-500">图片中文字：{item.image_text || '-'} · 尺寸建议：{item.size_recommendation || '-'}</p>
+      {item.notes && <p className="mt-1 text-xs text-slate-500">{item.notes}</p>}
     </article>
   );
 }
 
 function AplusCard({ item }: { item: any }) {
+  const allText = [
+    item.banner_copy,
+    item.brand_story_copy,
+    item.feature_modules,
+    item.specification_module,
+    item.application_module,
+    item.comparison_chart,
+    item.image_prompt_notes,
+  ].filter(Boolean).join('\n\n');
   return (
     <article className="rounded border bg-slate-50 p-4">
-      <h3 className="font-bold">{item.version_name}</h3>
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="font-bold">{item.version_name}</h3>
+        <CopyButton text={allText} />
+      </div>
       <CopyBlock title="Banner Copy" text={item.banner_copy} />
       <CopyBlock title="Brand Story" text={item.brand_story_copy} />
       <CopyBlock title="Feature Modules" text={item.feature_modules} />
@@ -421,5 +495,33 @@ function AplusCard({ item }: { item: any }) {
 }
 
 function CopyBlock({ title, text }: { title: string; text?: string }) {
-  return <div className="mt-3 rounded bg-white p-3 text-sm"><div className="mb-1 font-semibold text-slate-700">{title}</div><pre className="whitespace-pre-wrap font-sans text-slate-700">{text || '-'}</pre></div>;
+  return (
+    <div className="mt-3 rounded bg-white p-3 text-sm">
+      <div className="mb-1 flex items-center justify-between gap-3">
+        <div className="font-semibold text-slate-700">{title}</div>
+        <CopyButton text={text || ''} />
+      </div>
+      <pre className="whitespace-pre-wrap font-sans text-slate-700">{text || '-'}</pre>
+    </div>
+  );
+}
+
+function CopyButton({ text }: { text?: string }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    if (!text) return;
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1200);
+  }
+  return (
+    <button
+      className="rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+      disabled={!text}
+      onClick={copy}
+      type="button"
+    >
+      {copied ? '已复制' : '复制'}
+    </button>
+  );
 }

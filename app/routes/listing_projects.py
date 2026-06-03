@@ -104,7 +104,19 @@ def delete_competitor(project_id: int, competitor_id: int, db: Session = Depends
 def generate_listing(project_id: int, payload: dict[str, Any] | None = Body(default=None), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     try:
         payload = payload or {}
-        return {"items": [serialize_listing(item) for item in generate_listing_versions(db, project_id, user_id=user.id, model=payload.get("model"))]}
+        return {
+            "items": [
+                serialize_listing(item)
+                for item in generate_listing_versions(
+                    db,
+                    project_id,
+                    user_id=user.id,
+                    model=payload.get("model"),
+                    version_count=payload.get("version_count") or 5,
+                    product_reference_image=payload.get("product_reference_image") or {},
+                )
+            ]
+        }
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -113,7 +125,19 @@ def generate_listing(project_id: int, payload: dict[str, Any] | None = Body(defa
 def generate_images(project_id: int, payload: dict[str, Any] | None = Body(default=None), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     try:
         payload = payload or {}
-        return {"items": [serialize_image_prompt(item) for item in generate_image_prompts(db, project_id, user_id=user.id, model=payload.get("model"))]}
+        return {
+            "items": [
+                serialize_image_prompt(item)
+                for item in generate_image_prompts(
+                    db,
+                    project_id,
+                    user_id=user.id,
+                    model=payload.get("model"),
+                    version_count=payload.get("version_count") or 9,
+                    product_reference_image=payload.get("product_reference_image") or {},
+                )
+            ]
+        }
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -122,7 +146,16 @@ def generate_images(project_id: int, payload: dict[str, Any] | None = Body(defau
 def generate_aplus(project_id: int, payload: dict[str, Any] | None = Body(default=None), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     try:
         payload = payload or {}
-        return serialize_aplus(generate_aplus_version(db, project_id, user_id=user.id, model=payload.get("model")))
+        return serialize_aplus(
+            generate_aplus_version(
+                db,
+                project_id,
+                user_id=user.id,
+                model=payload.get("model"),
+                version_count=payload.get("version_count") or 1,
+                product_reference_image=payload.get("product_reference_image") or {},
+            )
+        )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
