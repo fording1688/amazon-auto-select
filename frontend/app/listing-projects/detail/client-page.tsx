@@ -442,7 +442,7 @@ function InfoBlock({ data }: { data: Record<string, any> }) {
 
 function ListingCard({ item }: { item: any }) {
   const bullets = [item.bullet_1, item.bullet_2, item.bullet_3, item.bullet_4, item.bullet_5].filter(Boolean);
-  const model = item.generated_model || modelFromText(item.generation_notes);
+  const model = item.generated_model || modelFromText(item.generation_notes) || '旧版本未记录模型';
   const allText = [
     item.title,
     ...bullets,
@@ -471,7 +471,8 @@ function ListingCard({ item }: { item: any }) {
 }
 
 function PromptCard({ item }: { item: any }) {
-  const model = item.generated_model || modelFromText(item.notes);
+  const legacyTemplate = isLegacyTemplatePrompt(item);
+  const model = item.generated_model || modelFromText(item.notes) || (legacyTemplate ? '旧模板生成，建议重新生成' : '旧版本未记录模型');
   return (
     <article className="rounded border bg-slate-50 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -482,6 +483,11 @@ function PromptCard({ item }: { item: any }) {
         <CopyButton text={[item.prompt_en, item.prompt_cn, item.negative_prompt].filter(Boolean).join('\n\n')} />
       </div>
       <p className="mt-1 text-sm text-slate-600">{item.image_goal}</p>
+      {legacyTemplate && (
+        <div className="mt-3 rounded border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">
+          这是旧版本记录，内容里仍包含旧模板句式，不代表当前模型生成结果。请在上方选择模型后重新点击“生成图片 Prompt”。
+        </div>
+      )}
       <div className="mt-3 grid gap-3 lg:grid-cols-2">
         <CopyBlock title="英文 Prompt" text={item.prompt_en} />
         <CopyBlock title="中文 Prompt" text={item.prompt_cn} />
@@ -494,7 +500,7 @@ function PromptCard({ item }: { item: any }) {
 }
 
 function AplusCard({ item }: { item: any }) {
-  const model = item.generated_model || modelFromText(item.image_prompt_notes);
+  const model = item.generated_model || modelFromText(item.image_prompt_notes) || '旧版本未记录模型';
   const allText = [
     item.banner_copy,
     item.brand_story_copy,
@@ -531,11 +537,17 @@ function modelFromText(text?: string) {
 
 function ModelBadge({ model }: { model?: string }) {
   if (!model) return null;
+  const isLegacy = model.includes('旧');
   return (
-    <span className="mt-1 inline-flex rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">
+    <span className={`mt-1 inline-flex rounded-full px-2 py-1 text-xs font-semibold ${isLegacy ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>
       模型来源：{model}
     </span>
   );
+}
+
+function isLegacyTemplatePrompt(item: any) {
+  const text = [item.prompt_en, item.prompt_cn, item.reference_usage_notes, item.notes].filter(Boolean).join('\n');
+  return /Use the uploaded product photo as the exact product reference|保持真实产品外观|Use competitor reference only as layout inspiration/i.test(text);
 }
 
 function CopyBlock({ title, text }: { title: string; text?: string }) {
