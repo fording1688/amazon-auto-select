@@ -1,4 +1,10 @@
+'use client';
+
+import { Suspense, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { apiGet } from '@/lib/api';
+import ContextBar from '../context-bar';
+import AdsSubnav from '../ads-subnav';
 
 const sections = [
   ['profitable_terms', '盈利词'],
@@ -21,12 +27,47 @@ const emptyDiagnosis: DiagnosisData = {
   exact_keywords: [],
 };
 
-export default async function AdsDiagnosisPage() {
-  const data = await apiGet<DiagnosisData>('/api/copilot/ads-diagnosis').catch(() => emptyDiagnosis);
+function queryFor(searchParams: URLSearchParams) {
+  const params = new URLSearchParams();
+  const storeId = searchParams.get('store_id');
+  const businessDate = searchParams.get('business_date');
+  if (storeId) params.set('store_id', storeId);
+  if (businessDate) params.set('business_date', businessDate);
+  const query = params.toString();
+  return query ? `?${query}` : '';
+}
+
+export default function AdsDiagnosisPage() {
+  return (
+    <Suspense fallback={<main className="mx-auto max-w-7xl px-6 py-8 text-slate-600">加载中...</main>}>
+      <AdsDiagnosisContent />
+    </Suspense>
+  );
+}
+
+function AdsDiagnosisContent() {
+  const searchParams = useSearchParams();
+  const [data, setData] = useState<DiagnosisData>(emptyDiagnosis);
+
+  useEffect(() => {
+    apiGet<DiagnosisData>(`/api/copilot/ads-diagnosis${queryFor(searchParams)}`)
+      .then(setData)
+      .catch(() => setData(emptyDiagnosis));
+  }, [searchParams]);
+
+  const storeId = searchParams.get('store_id') || undefined;
+  const businessDate = searchParams.get('business_date') || undefined;
+
   return (
     <main className="mx-auto max-w-7xl px-6 py-8">
       <h1 className="text-3xl font-bold">Ads Diagnosis Center</h1>
       <p className="mt-2 text-slate-600">识别盈利词、ASIN 商品投放机会、烧钱词和否定词建议；ASIN 流量不会被当成 keyword exact。</p>
+      <div className="mt-6">
+        <AdsSubnav />
+      </div>
+      <div className="mt-6">
+        <ContextBar storeId={storeId} businessDate={businessDate} basePath="/ads-diagnosis" />
+      </div>
       <div className="mt-6 grid gap-5 lg:grid-cols-2">
         {sections.map(([key, label]) => (
           <section className="rounded-lg border bg-white p-5" key={key}>

@@ -23,6 +23,7 @@ from app.models import (
     CampaignMetric,
     CostItem,
     ImportBatch,
+    Store,
     InventoryItem,
     ListingItem,
     SearchTermMetric,
@@ -350,12 +351,25 @@ def import_report(
     duplicate_strategy: str = "prompt",
     uploaded_by: str | None = None,
     marketplace: str = "US",
+    store_name: str | None = None,
+    business_date: datetime | None = None,
+    user_id: int | None = None,
 ) -> ImportBatch:
     if report_type not in REPORT_TYPES:
         raise ValueError("未知报表类型")
     if duplicate_strategy not in DUPLICATE_STRATEGIES:
         raise ValueError("未知重复数据处理方式")
+    store = find_store(db, store_name or "", user_id=user_id)
+    if not store:
+        raise ValueError("请先创建店铺名称，再上传报表。")
+    project_date = business_date or datetime.utcnow()
+    project_name = f"{project_date:%Y-%m-%d}-{store.name}-{report_type}"
     batch = ImportBatch(
+        user_id=user_id,
+        store_id=store.id,
+        store_name=store.name,
+        business_date=project_date,
+        project_name=project_name,
         report_type=report_type,
         file_name=file_name,
         marketplace=marketplace,
@@ -390,13 +404,11 @@ def import_report(
         model = REPORT_MODEL_BY_TYPE.get(report_type)
         duplicate_hashes: set[str] = set()
         if model and hashes:
-            duplicate_hashes = set(
-                db.execute(
-                    select(model.data_hash).where(model.data_hash.in_(hashes)).where(model.is_active.is_(True))
-                )
-                .scalars()
-                .all()
-            )
+            duplicate_query = select(model.data_hash).where(model.data_hash.in_(hashes)).where(model.is_active.is_(True))
+            if user_id:
+                user_batches = select(ImportBatch.id).where(ImportBatch.user_id == user_id)
+                duplicate_query = duplicate_query.where(model.import_batch_id.in_(user_batches))
+            duplicate_hashes = set(db.execute(duplicate_query).scalars().all())
         batch.duplicate_count = len(duplicate_hashes)
         batch.period_start = min(dates) if dates else None
         batch.period_end = max(dates) if dates else None
@@ -411,9 +423,11 @@ def import_report(
             db.refresh(batch)
             return batch
         if duplicate_hashes and duplicate_strategy == "overwrite" and model:
-            db.query(model).filter(model.data_hash.in_(duplicate_hashes)).update(
-                {"is_active": False}, synchronize_session=False
-            )
+            update_query = db.query(model).filter(model.data_hash.in_(duplicate_hashes))
+            if user_id:
+                user_batches = select(ImportBatch.id).where(ImportBatch.user_id == user_id)
+                update_query = update_query.filter(model.import_batch_id.in_(user_batches))
+            update_query.update({"is_active": False}, synchronize_session=False)
 
         inserted = 0
         for row, alias, row_marketplace, report_date, period_start, period_end, data_hash in prepared:
@@ -444,6 +458,40 @@ def import_report(
     db.commit()
     db.refresh(batch)
     return batch
+
+
+def ensure_store(db: Session, name: str, marketplace: str = "US", user_id: int | None = None) -> Store:
+    clean_name = (name or "").strip()
+    if not clean_name:
+        raise ValueError("请填写店铺名称。")
+    query = select(Store).where(Store.name == clean_name)
+    if user_id:
+        query = query.where(Store.user_id == user_id)
+    store = db.execute(query).scalar_one_or_none()
+    if store:
+        return store
+    store = Store(name=clean_name, marketplace=marketplace or "US", user_id=user_id)
+    db.add(store)
+    db.commit()
+    db.refresh(store)
+    return store
+
+
+def find_store(db: Session, name: str, user_id: int | None = None) -> Store | None:
+    clean_name = (name or "").strip()
+    if not clean_name:
+        return None
+    query = select(Store).where(Store.name == clean_name)
+    if user_id:
+        query = query.where(Store.user_id == user_id)
+    return db.execute(query).scalar_one_or_none()
+
+
+def list_stores(db: Session, user_id: int | None = None) -> list[Store]:
+    query = select(Store).order_by(Store.name)
+    if user_id:
+        query = query.where(Store.user_id == user_id)
+    return db.execute(query).scalars().all()
 
 
 def ensure_report_dirs() -> None:
@@ -725,16 +773,47 @@ def count_batches(db: Session) -> int:
     return db.execute(select(func.count(ImportBatch.id))).scalar_one()
 
 
-def build_sku_dashboard(db: Session) -> list[SkuSummary]:
-    business_rows = db.execute(select(BusinessMetric).where(BusinessMetric.is_active.is_(True))).scalars().all()
-    ad_rows = db.execute(select(AdvertisedProductMetric).where(AdvertisedProductMetric.is_active.is_(True))).scalars().all()
+def _batch_filter_ids(db: Session, store_id: int | None = None, business_date: datetime | None = None, user_id: int | None = None) -> list[int] | None:
+    if not store_id and not business_date and not user_id:
+        return None
+    query = select(ImportBatch.id).where(ImportBatch.status == "success")
+    if user_id:
+        query = query.where(ImportBatch.user_id == user_id)
+    if store_id:
+        query = query.where(ImportBatch.store_id == store_id)
+    if business_date:
+        query = query.where(func.date(ImportBatch.business_date) == business_date.date())
+    return list(db.execute(query).scalars().all())
+
+
+def _apply_batch_scope(query, model, batch_ids: list[int] | None):
+    if batch_ids is None:
+        return query
+    if not batch_ids:
+        return query.where(False)
+    return query.where(model.batch_id.in_(batch_ids))
+
+
+def build_sku_dashboard(
+    db: Session,
+    store_id: int | None = None,
+    business_date: datetime | None = None,
+    user_id: int | None = None,
+) -> list[SkuSummary]:
+    batch_ids = _batch_filter_ids(db, store_id, business_date, user_id=user_id)
+    business_query = _apply_batch_scope(select(BusinessMetric).where(BusinessMetric.is_active.is_(True)), BusinessMetric, batch_ids)
+    ad_query = _apply_batch_scope(select(AdvertisedProductMetric).where(AdvertisedProductMetric.is_active.is_(True)), AdvertisedProductMetric, batch_ids)
+    cost_query = _apply_batch_scope(select(CostItem).where(CostItem.is_active.is_(True)).order_by(desc(CostItem.created_at)), CostItem, batch_ids)
+    listing_query = _apply_batch_scope(select(ListingItem).where(ListingItem.is_active.is_(True)).order_by(desc(ListingItem.created_at)), ListingItem, batch_ids)
+    business_rows = db.execute(business_query).scalars().all()
+    ad_rows = db.execute(ad_query).scalars().all()
     costs = (
-        db.execute(select(CostItem).where(CostItem.is_active.is_(True)).order_by(desc(CostItem.created_at)))
+        db.execute(cost_query)
         .scalars()
         .all()
     )
     listings = (
-        db.execute(select(ListingItem).where(ListingItem.is_active.is_(True)).order_by(desc(ListingItem.created_at)))
+        db.execute(listing_query)
         .scalars()
         .all()
     )

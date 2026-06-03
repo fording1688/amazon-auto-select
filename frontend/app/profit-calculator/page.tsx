@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from 'react';
-import { API_BASE } from '@/lib/api';
+import { authFetch } from '@/lib/api';
 
 const fields = [
   ['price', '售价'], ['purchase_cost', '采购成本'], ['logistics_cost', '物流成本'], ['fba_fee', 'FBA费用'], ['referral_fee_rate', '平台佣金比例'], ['ad_spend', '广告花费'],
@@ -11,7 +11,7 @@ export default function ProfitCalculatorPage() {
   const [form, setForm] = useState<Record<string, number>>({ price: 29.99, referral_fee_rate: 0.15 });
   const [result, setResult] = useState<Record<string, number> | null>(null);
   async function calculate() {
-    const response = await fetch(`${API_BASE}/api/copilot/profit-calculator`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
+    const response = await authFetch('/api/copilot/profit-calculator', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
     setResult(await response.json());
   }
   return (

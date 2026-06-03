@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     amazon_ads_api_enabled: bool = False
     default_ad_test_cost: float = 15.0
+    auth_secret_key: str = "change-me-local-dev-secret"
+    access_token_expire_minutes: int = 10080
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

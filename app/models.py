@@ -108,10 +108,39 @@ class KeywordResearchRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    name: Mapped[Optional[str]] = mapped_column(String(120))
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="active", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+
+class Store(Base):
+    __tablename__ = "stores"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    marketplace: Mapped[str] = mapped_column(String(30), default="US", index=True)
+    status: Mapped[str] = mapped_column(String(30), default="active", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+
 class ImportBatch(Base):
     __tablename__ = "import_batches"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), index=True)
+    store_id: Mapped[Optional[int]] = mapped_column(ForeignKey("stores.id"), index=True)
+    store_name: Mapped[Optional[str]] = mapped_column(String(120), index=True)
+    business_date: Mapped[Optional[datetime]] = mapped_column(DateTime, index=True)
+    project_name: Mapped[Optional[str]] = mapped_column(String(255), index=True)
     report_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
     marketplace: Mapped[str] = mapped_column(String(30), default="US", index=True)
@@ -185,6 +214,7 @@ class SalesDaily(Base):
     __tablename__ = "sales_daily"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), index=True)
     import_batch_id: Mapped[Optional[int]] = mapped_column(ForeignKey("import_batches.id"), index=True)
     marketplace: Mapped[str] = mapped_column(String(30), default="US", index=True)
     sku: Mapped[Optional[str]] = mapped_column(String(120), index=True)
@@ -208,6 +238,7 @@ class AdsDaily(Base):
     __tablename__ = "ads_daily"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), index=True)
     import_batch_id: Mapped[Optional[int]] = mapped_column(ForeignKey("import_batches.id"), index=True)
     marketplace: Mapped[str] = mapped_column(String(30), default="US", index=True)
     sku: Mapped[Optional[str]] = mapped_column(String(120), index=True)
@@ -234,6 +265,7 @@ class SearchTerm(Base):
     __tablename__ = "search_terms"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), index=True)
     import_batch_id: Mapped[Optional[int]] = mapped_column(ForeignKey("import_batches.id"), index=True)
     marketplace: Mapped[str] = mapped_column(String(30), default="US", index=True)
     sku: Mapped[Optional[str]] = mapped_column(String(120), index=True)
@@ -266,6 +298,7 @@ class InventoryDaily(Base):
     __tablename__ = "inventory_daily"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), index=True)
     import_batch_id: Mapped[Optional[int]] = mapped_column(ForeignKey("import_batches.id"), index=True)
     marketplace: Mapped[str] = mapped_column(String(30), default="US", index=True)
     sku: Mapped[Optional[str]] = mapped_column(String(120), index=True)
@@ -304,6 +337,7 @@ class Recommendation(Base):
     __tablename__ = "recommendations"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), index=True)
     sku: Mapped[Optional[str]] = mapped_column(String(120), index=True)
     asin: Mapped[Optional[str]] = mapped_column(String(32), index=True)
     recommendation_type: Mapped[str] = mapped_column(String(80), index=True)
@@ -314,6 +348,128 @@ class Recommendation(Base):
     source_json: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+
+class ListingProject(Base):
+    __tablename__ = "listing_projects"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), index=True)
+    project_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    marketplace: Mapped[str] = mapped_column(String(30), default="US", index=True)
+    brand: Mapped[Optional[str]] = mapped_column(String(120))
+    category: Mapped[Optional[str]] = mapped_column(String(120), index=True)
+    product_name: Mapped[Optional[str]] = mapped_column(String(255), index=True)
+    target_price: Mapped[Optional[float]] = mapped_column(Float)
+    fulfillment_method: Mapped[Optional[str]] = mapped_column(String(80))
+    status: Mapped[str] = mapped_column(String(30), default="draft", index=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+
+class ListingProjectInput(Base):
+    __tablename__ = "listing_project_inputs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("listing_projects.id"), nullable=False, index=True)
+    size: Mapped[Optional[str]] = mapped_column(Text)
+    material: Mapped[Optional[str]] = mapped_column(Text)
+    color: Mapped[Optional[str]] = mapped_column(Text)
+    quantity: Mapped[Optional[str]] = mapped_column(Text)
+    compatibility: Mapped[Optional[str]] = mapped_column(Text)
+    package_includes: Mapped[Optional[str]] = mapped_column(Text)
+    not_included: Mapped[Optional[str]] = mapped_column(Text)
+    warning_limitation: Mapped[Optional[str]] = mapped_column(Text)
+    use_cases: Mapped[Optional[str]] = mapped_column(Text)
+    target_customer: Mapped[Optional[str]] = mapped_column(Text)
+    buyer_type: Mapped[Optional[str]] = mapped_column(Text)
+    advantages: Mapped[Optional[str]] = mapped_column(Text)
+    difference_from_competitors: Mapped[Optional[str]] = mapped_column(Text)
+    main_keywords: Mapped[Optional[str]] = mapped_column(Text)
+    secondary_keywords: Mapped[Optional[str]] = mapped_column(Text)
+    long_tail_keywords: Mapped[Optional[str]] = mapped_column(Text)
+    compatibility_keywords: Mapped[Optional[str]] = mapped_column(Text)
+    keywords_to_avoid: Mapped[Optional[str]] = mapped_column(Text)
+    forbidden_words: Mapped[Optional[str]] = mapped_column(Text)
+    compliance_notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+
+class CompetitorReference(Base):
+    __tablename__ = "competitor_references"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("listing_projects.id"), nullable=False, index=True)
+    competitor_url: Mapped[Optional[str]] = mapped_column(Text)
+    competitor_title: Mapped[Optional[str]] = mapped_column(Text)
+    competitor_bullets: Mapped[Optional[str]] = mapped_column(Text)
+    competitor_description: Mapped[Optional[str]] = mapped_column(Text)
+    competitor_price: Mapped[Optional[float]] = mapped_column(Float)
+    competitor_rating: Mapped[Optional[float]] = mapped_column(Float)
+    competitor_review_count: Mapped[Optional[int]] = mapped_column(Integer)
+    competitor_image_notes: Mapped[Optional[str]] = mapped_column(Text)
+    competitor_aplus_notes: Mapped[Optional[str]] = mapped_column(Text)
+    what_to_reference: Mapped[Optional[str]] = mapped_column(Text)
+    what_to_avoid: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
+class ListingVersion(Base):
+    __tablename__ = "listing_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("listing_projects.id"), nullable=False, index=True)
+    version_name: Mapped[str] = mapped_column(String(120), default="Listing Version", index=True)
+    title: Mapped[Optional[str]] = mapped_column(Text)
+    bullet_1: Mapped[Optional[str]] = mapped_column(Text)
+    bullet_2: Mapped[Optional[str]] = mapped_column(Text)
+    bullet_3: Mapped[Optional[str]] = mapped_column(Text)
+    bullet_4: Mapped[Optional[str]] = mapped_column(Text)
+    bullet_5: Mapped[Optional[str]] = mapped_column(Text)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    backend_search_terms: Mapped[Optional[str]] = mapped_column(Text)
+    seo_score: Mapped[Optional[float]] = mapped_column(Float)
+    conversion_score: Mapped[Optional[float]] = mapped_column(Float)
+    compliance_risk_notes: Mapped[Optional[str]] = mapped_column(Text)
+    generation_notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
+class ImagePromptVersion(Base):
+    __tablename__ = "image_prompt_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("listing_projects.id"), nullable=False, index=True)
+    version_name: Mapped[str] = mapped_column(String(120), default="Image Prompt Version", index=True)
+    image_type: Mapped[Optional[str]] = mapped_column(String(120), index=True)
+    image_goal: Mapped[Optional[str]] = mapped_column(Text)
+    required_reference_images: Mapped[Optional[str]] = mapped_column(Text)
+    reference_usage_notes: Mapped[Optional[str]] = mapped_column(Text)
+    image_text: Mapped[Optional[str]] = mapped_column(Text)
+    prompt_en: Mapped[Optional[str]] = mapped_column(Text)
+    prompt_cn: Mapped[Optional[str]] = mapped_column(Text)
+    negative_prompt: Mapped[Optional[str]] = mapped_column(Text)
+    size_recommendation: Mapped[Optional[str]] = mapped_column(Text)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
+class AplusVersion(Base):
+    __tablename__ = "aplus_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("listing_projects.id"), nullable=False, index=True)
+    version_name: Mapped[str] = mapped_column(String(120), default="A+ Version", index=True)
+    banner_copy: Mapped[Optional[str]] = mapped_column(Text)
+    brand_story_copy: Mapped[Optional[str]] = mapped_column(Text)
+    feature_modules: Mapped[Optional[str]] = mapped_column(Text)
+    specification_module: Mapped[Optional[str]] = mapped_column(Text)
+    application_module: Mapped[Optional[str]] = mapped_column(Text)
+    comparison_chart: Mapped[Optional[str]] = mapped_column(Text)
+    image_prompt_notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
 
 
 class BusinessMetric(Base):

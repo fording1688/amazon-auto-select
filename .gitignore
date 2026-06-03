@@ -6,6 +6,7 @@ __pycache__/
 *.db
 .DS_Store
 frontend/.next/
+frontend/out/
 frontend/node_modules/
 amazon_reports/inbox/*
 amazon_reports/imported/*

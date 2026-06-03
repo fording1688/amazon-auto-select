@@ -11,15 +11,19 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.ad_recommendations import generate_ad_recommendations, is_asin_search_term
-from app.models import AdsDaily, InventoryDaily, InventoryItem, Recommendation, SalesDaily, SearchTerm, SearchTermMetric
+from app.models import AdsDaily, ImportBatch, InventoryDaily, InventoryItem, Recommendation, SalesDaily, SearchTerm, SearchTermMetric
 from app.report_importer import (
     _alias_map,
     _get,
     _json,
     _row_marketplace,
     _row_period,
+    _apply_batch_scope,
+    _batch_filter_ids,
     build_sku_dashboard,
+    ensure_store,
     import_report,
+    list_stores,
     parse_tabular_file,
     row_data_hash,
     to_float,
@@ -49,12 +53,26 @@ def import_copilot_report(
     duplicate_strategy: str = "prompt",
     uploaded_by: str | None = None,
     marketplace: str = "US",
+    store_name: str | None = None,
+    business_date: datetime | None = None,
+    user_id: int | None = None,
 ) -> dict[str, Any]:
     normalized = REPORT_TYPE_MAP.get(report_type, report_type)
-    batch = import_report(db, normalized, file_name, content, duplicate_strategy, uploaded_by, marketplace)
+    batch = import_report(
+        db,
+        normalized,
+        file_name,
+        content,
+        duplicate_strategy,
+        uploaded_by,
+        marketplace,
+        store_name=store_name,
+        business_date=business_date,
+        user_id=user_id,
+    )
     synced_rows = 0
     if batch.status == "success":
-        synced_rows = _sync_copilot_tables(db, batch.id, normalized, file_name, content, duplicate_strategy, marketplace)
+        synced_rows = _sync_copilot_tables(db, batch.id, normalized, file_name, content, duplicate_strategy, marketplace, user_id=user_id)
     generated = 0
     if normalized in {"search_terms", "campaigns"} and batch.status == "success":
         generated = generate_ad_recommendations(db)
@@ -62,6 +80,10 @@ def import_copilot_report(
         "batch_id": batch.id,
         "report_type": normalized,
         "file_name": batch.file_name,
+        "store_id": batch.store_id,
+        "store_name": batch.store_name,
+        "business_date": batch.business_date,
+        "project_name": batch.project_name,
         "row_count": batch.row_count,
         "status": batch.status,
         "error_message": batch.error_message,
@@ -73,6 +95,49 @@ def import_copilot_report(
     }
 
 
+def store_options(db: Session, user_id: int | None = None) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": store.id,
+            "name": store.name,
+            "marketplace": store.marketplace,
+            "status": store.status,
+        }
+        for store in list_stores(db, user_id=user_id)
+    ]
+
+
+def create_store(db: Session, name: str, marketplace: str = "US", user_id: int | None = None) -> dict[str, Any]:
+    store = ensure_store(db, name, marketplace, user_id=user_id)
+    return {"id": store.id, "name": store.name, "marketplace": store.marketplace, "status": store.status}
+
+
+def batch_context_options(db: Session, store_id: int | None = None, user_id: int | None = None) -> dict[str, Any]:
+    query = select(ImportBatch).where(ImportBatch.status == "success").order_by(desc(ImportBatch.business_date), desc(ImportBatch.uploaded_at))
+    if user_id:
+        query = query.where(ImportBatch.user_id == user_id)
+    if store_id:
+        query = query.where(ImportBatch.store_id == store_id)
+    batches = db.execute(query.limit(100)).scalars().all()
+    return {
+        "stores": store_options(db, user_id=user_id),
+        "batches": [
+            {
+                "id": batch.id,
+                "store_id": batch.store_id,
+                "store_name": batch.store_name,
+                "business_date": batch.business_date,
+                "project_name": batch.project_name,
+                "report_type": batch.report_type,
+                "file_name": batch.file_name,
+                "row_count": batch.row_count,
+                "uploaded_at": batch.uploaded_at,
+            }
+            for batch in batches
+        ],
+    }
+
+
 def _sync_copilot_tables(
     db: Session,
     batch_id: int,
@@ -81,6 +146,7 @@ def _sync_copilot_tables(
     content: bytes,
     duplicate_strategy: str,
     marketplace: str,
+    user_id: int | None = None,
 ) -> int:
     if report_type not in {"business", "search_terms", "campaigns", "inventory"}:
         return 0
@@ -102,13 +168,15 @@ def _sync_copilot_tables(
     hashes = [item[-1] for item in prepared]
     duplicate_hashes = set()
     if hashes:
-        duplicate_hashes = set(
-            db.execute(select(model.data_hash).where(model.data_hash.in_(hashes)).where(model.is_active.is_(True)))
-            .scalars()
-            .all()
-        )
+        duplicate_query = select(model.data_hash).where(model.data_hash.in_(hashes)).where(model.is_active.is_(True))
+        if user_id:
+            duplicate_query = duplicate_query.where(model.user_id == user_id)
+        duplicate_hashes = set(db.execute(duplicate_query).scalars().all())
     if duplicate_hashes and duplicate_strategy == "overwrite":
-        db.query(model).filter(model.data_hash.in_(duplicate_hashes)).update({"is_active": False}, synchronize_session=False)
+        update_query = db.query(model).filter(model.data_hash.in_(duplicate_hashes))
+        if user_id:
+            update_query = update_query.filter(model.user_id == user_id)
+        update_query.update({"is_active": False}, synchronize_session=False)
     inserted = 0
     for row, alias, row_marketplace, report_date, period_start, period_end, data_hash in prepared:
         if data_hash in duplicate_hashes and duplicate_strategy == "skip":
@@ -116,6 +184,7 @@ def _sync_copilot_tables(
         is_active = not (data_hash in duplicate_hashes and duplicate_strategy == "preserve_inactive")
         raw_json = _json(row)
         common = {
+            "user_id": user_id,
             "import_batch_id": batch_id,
             "marketplace": row_marketplace,
             "date": report_date,
@@ -195,9 +264,14 @@ def _sync_copilot_tables(
     return inserted
 
 
-def sku_health_center(db: Session) -> list[dict[str, Any]]:
-    rows = build_sku_dashboard(db)
-    latest_inventory = _latest_inventory_by_key(db)
+def sku_health_center(
+    db: Session,
+    store_id: int | None = None,
+    business_date: datetime | None = None,
+    user_id: int | None = None,
+) -> list[dict[str, Any]]:
+    rows = build_sku_dashboard(db, store_id=store_id, business_date=business_date, user_id=user_id)
+    latest_inventory = _latest_inventory_by_key(db, store_id=store_id, business_date=business_date, user_id=user_id)
     health_rows = []
     for row in rows:
         inv = latest_inventory.get(row.sku) or latest_inventory.get(row.asin) or {}
@@ -245,12 +319,17 @@ def sku_health_center(db: Session) -> list[dict[str, Any]]:
     return sorted(health_rows, key=lambda item: item["health_score"])
 
 
-def ads_diagnosis_center(db: Session, target_acos: float = TARGET_ACOS) -> dict[str, Any]:
-    rows = (
-        db.execute(select(SearchTermMetric).where(SearchTermMetric.is_active.is_(True)).order_by(desc(SearchTermMetric.spend)))
-        .scalars()
-        .all()
-    )
+def ads_diagnosis_center(
+    db: Session,
+    target_acos: float = TARGET_ACOS,
+    store_id: int | None = None,
+    business_date: datetime | None = None,
+    user_id: int | None = None,
+) -> dict[str, Any]:
+    batch_ids = _batch_filter_ids(db, store_id, business_date, user_id=user_id)
+    query = select(SearchTermMetric).where(SearchTermMetric.is_active.is_(True)).order_by(desc(SearchTermMetric.spend))
+    query = _apply_batch_scope(query, SearchTermMetric, batch_ids)
+    rows = db.execute(query).scalars().all()
     diagnosis = {
         "profitable_terms": [],
         "potential_terms": [],
@@ -339,9 +418,14 @@ def profit_calculator(payload: dict[str, Any]) -> dict[str, float]:
     }
 
 
-def daily_operations_report(db: Session) -> dict[str, Any]:
-    health = sku_health_center(db)
-    ads = ads_diagnosis_center(db)
+def daily_operations_report(
+    db: Session,
+    store_id: int | None = None,
+    business_date: datetime | None = None,
+    user_id: int | None = None,
+) -> dict[str, Any]:
+    health = sku_health_center(db, store_id=store_id, business_date=business_date, user_id=user_id)
+    ads = ads_diagnosis_center(db, store_id=store_id, business_date=business_date, user_id=user_id)
     urgent = []
     potential = []
     for sku in health:
@@ -368,17 +452,21 @@ def daily_operations_report(db: Session) -> dict[str, Any]:
         "today_recommended_actions": actions[:15],
         "priority_order": ["先处理库存风险和亏损 SKU", "再处理烧钱搜索词", "最后放大低 ACOS 盈利词和潜力 SKU"],
     }
-    _save_report_recommendations(db, report)
+    _save_report_recommendations(db, report, user_id=user_id)
     return report
 
 
-def _latest_inventory_by_key(db: Session) -> dict[str, dict[str, Any]]:
+def _latest_inventory_by_key(
+    db: Session,
+    store_id: int | None = None,
+    business_date: datetime | None = None,
+    user_id: int | None = None,
+) -> dict[str, dict[str, Any]]:
     result: dict[str, dict[str, Any]] = {}
-    rows = (
-        db.execute(select(InventoryItem).where(InventoryItem.is_active.is_(True)).order_by(desc(InventoryItem.created_at)))
-        .scalars()
-        .all()
-    )
+    batch_ids = _batch_filter_ids(db, store_id, business_date, user_id=user_id)
+    query = select(InventoryItem).where(InventoryItem.is_active.is_(True)).order_by(desc(InventoryItem.created_at))
+    query = _apply_batch_scope(query, InventoryItem, batch_ids)
+    rows = db.execute(query).scalars().all()
     for row in rows:
         data = {"days_of_supply": row.days_of_supply, "available": row.available, "inbound": row.inbound}
         for key in [row.sku, row.asin]:
@@ -387,10 +475,11 @@ def _latest_inventory_by_key(db: Session) -> dict[str, dict[str, Any]]:
     return result
 
 
-def _save_report_recommendations(db: Session, report: dict[str, Any]) -> None:
+def _save_report_recommendations(db: Session, report: dict[str, Any], user_id: int | None = None) -> None:
     for index, action in enumerate(report.get("today_recommended_actions", [])[:10]):
         db.add(
             Recommendation(
+                user_id=user_id,
                 recommendation_type="daily_action",
                 priority="P0" if index < 3 else "P1",
                 title="每日运营动作",

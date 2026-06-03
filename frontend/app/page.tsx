@@ -1,4 +1,9 @@
+'use client';
+
+import { Suspense, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { apiGet } from '@/lib/api';
+import ContextBar from './context-bar';
 
 type SkuHealth = {
   sku: string;
@@ -20,25 +25,56 @@ type DailyReport = {
   priority_order: string[];
 };
 
-async function loadData() {
-  const [health, report] = await Promise.all([
-    apiGet<{ items: SkuHealth[] }>('/api/copilot/sku-health').catch(() => ({ items: [] })),
-    apiGet<DailyReport>('/api/copilot/daily-report').catch(() => ({
-      today_main_issues: [],
-      today_potential_skus: [],
-      today_recommended_actions: [],
-      priority_order: [],
-    })),
-  ]);
-  return { health: health.items, report };
+function contextQuery(searchParams: URLSearchParams) {
+  const params = new URLSearchParams();
+  const storeId = searchParams.get('store_id');
+  const businessDate = searchParams.get('business_date');
+  if (storeId) params.set('store_id', storeId);
+  if (businessDate) params.set('business_date', businessDate);
+  const query = params.toString();
+  return query ? `?${query}` : '';
 }
 
-export default async function Home() {
-  const { health, report } = await loadData();
+export default function Home() {
+  return (
+    <Suspense fallback={<main className="mx-auto max-w-7xl px-6 py-8 text-slate-600">加载中...</main>}>
+      <HomeContent />
+    </Suspense>
+  );
+}
+
+function HomeContent() {
+  const searchParams = useSearchParams();
+  const [health, setHealth] = useState<SkuHealth[]>([]);
+  const [report, setReport] = useState<DailyReport>({
+    today_main_issues: [],
+    today_potential_skus: [],
+    today_recommended_actions: [],
+    priority_order: [],
+  });
+
+  useEffect(() => {
+    const query = contextQuery(searchParams);
+    Promise.all([
+      apiGet<{ items: SkuHealth[] }>(`/api/copilot/sku-health${query}`).catch(() => ({ items: [] })),
+      apiGet<DailyReport>(`/api/copilot/daily-report${query}`).catch(() => ({
+        today_main_issues: [],
+        today_potential_skus: [],
+        today_recommended_actions: [],
+        priority_order: [],
+      })),
+    ]).then(([healthData, reportData]) => {
+      setHealth(healthData.items || []);
+      setReport(reportData);
+    });
+  }, [searchParams]);
+
   const topRisks = health.slice(0, 8);
   const totalSales = health.reduce((sum, item) => sum + (item.sales || 0), 0);
   const totalAdSpend = health.reduce((sum, item) => sum + (item.ad_spend || 0), 0);
   const totalProfit = health.reduce((sum, item) => sum + (item.estimated_profit || 0), 0);
+  const storeId = searchParams.get('store_id') || undefined;
+  const businessDate = searchParams.get('business_date') || undefined;
 
   return (
     <main className="mx-auto max-w-7xl px-6 py-8">
@@ -51,6 +87,8 @@ export default async function Home() {
         <a className="rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white" href="/uploads">上传报表</a>
       </header>
 
+      <ContextBar storeId={storeId} businessDate={businessDate} basePath="/" />
+
       <section className="mb-6 grid gap-4 md:grid-cols-4">
         <Metric label="SKU 数" value={health.length.toString()} />
         <Metric label="销售额" value={`$${totalSales.toFixed(2)}`} />
@@ -59,37 +97,20 @@ export default async function Home() {
       </section>
 
       <section className="mb-6 grid gap-6 lg:grid-cols-2">
-        <Panel title="今日主要问题">
-          <List items={report.today_main_issues} empty="暂无明显问题，继续观察销售、广告和库存。" />
-        </Panel>
-        <Panel title="今日建议动作">
-          <List items={report.today_recommended_actions} empty="暂无建议动作，请先上传报表。" />
-        </Panel>
+        <Panel title="今日主要问题"><List items={report.today_main_issues} empty="暂无明显问题，继续观察销售、广告和库存。" /></Panel>
+        <Panel title="今日建议动作"><List items={report.today_recommended_actions} empty="暂无建议动作，请先上传报表。" /></Panel>
       </section>
 
       <section className="mb-6 grid gap-6 lg:grid-cols-2">
-        <Panel title="潜力 SKU">
-          <List items={report.today_potential_skus} empty="暂无明显潜力 SKU。" />
-        </Panel>
-        <Panel title="处理优先级">
-          <List items={report.priority_order} empty="先上传完整报表后生成优先级。" />
-        </Panel>
+        <Panel title="潜力 SKU"><List items={report.today_potential_skus} empty="暂无明显潜力 SKU。" /></Panel>
+        <Panel title="处理优先级"><List items={report.priority_order} empty="先上传完整报表后生成优先级。" /></Panel>
       </section>
 
       <Panel title="SKU Health Center">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="border-b text-slate-500">
-              <tr>
-                <th className="py-3">SKU / ASIN</th>
-                <th>销售</th>
-                <th>广告</th>
-                <th>利润</th>
-                <th>库存</th>
-                <th>健康分</th>
-                <th>标签</th>
-                <th>建议</th>
-              </tr>
+              <tr><th className="py-3">SKU / ASIN</th><th>销售</th><th>广告</th><th>利润</th><th>库存</th><th>健康分</th><th>标签</th><th>建议</th></tr>
             </thead>
             <tbody>
               {topRisks.map((item) => (
