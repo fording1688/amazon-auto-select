@@ -33,7 +33,7 @@ export default function ListingProjectDetailPage({ params }: { params: { id: str
   const [message, setMessage] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
   const [versionCount, setVersionCount] = useState(5);
-  const [referenceImage, setReferenceImage] = useState<{ file_name?: string; note?: string; preview?: string }>({});
+  const [referenceImage, setReferenceImage] = useState<{ file_name?: string; note?: string; preview?: string; data_url?: string }>({});
   const [projectMessage, setProjectMessage] = useState('');
   const [competitorMessage, setCompetitorMessage] = useState('');
 
@@ -59,6 +59,7 @@ export default function ListingProjectDetailPage({ params }: { params: { id: str
           product_reference_image: {
             file_name: referenceImage.file_name || '',
             note: referenceImage.note || '',
+            data_url: referenceImage.data_url || '',
           },
         }),
       });
@@ -76,7 +77,21 @@ export default function ListingProjectDetailPage({ params }: { params: { id: str
   function handleReferenceImage(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
-    setReferenceImage((current) => ({ ...current, file_name: file.name, preview: URL.createObjectURL(file) }));
+    if (file.size > 3 * 1024 * 1024) {
+      setMessage('主图参考图片请控制在 3MB 以内，避免模型接口拒收。');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setReferenceImage((current) => ({
+        ...current,
+        file_name: file.name,
+        preview: URL.createObjectURL(file),
+        data_url: typeof reader.result === 'string' ? reader.result : '',
+      }));
+    };
+    reader.onerror = () => setMessage('读取主图参考失败，请换一张图片重试。');
+    reader.readAsDataURL(file);
   }
 
   async function saveProject(event: FormEvent<HTMLFormElement>) {
@@ -427,6 +442,7 @@ function InfoBlock({ data }: { data: Record<string, any> }) {
 
 function ListingCard({ item }: { item: any }) {
   const bullets = [item.bullet_1, item.bullet_2, item.bullet_3, item.bullet_4, item.bullet_5].filter(Boolean);
+  const model = item.generated_model || modelFromText(item.generation_notes);
   const allText = [
     item.title,
     ...bullets,
@@ -436,7 +452,10 @@ function ListingCard({ item }: { item: any }) {
   return (
     <article className="rounded border bg-slate-50 p-4">
       <div className="flex items-start justify-between gap-3">
-        <h3 className="font-bold">{item.version_name}</h3>
+        <div>
+          <h3 className="font-bold">{item.version_name}</h3>
+          <ModelBadge model={model} />
+        </div>
         <CopyButton text={allText} />
       </div>
       <CopyBlock title="Title" text={item.title} />
@@ -452,9 +471,16 @@ function ListingCard({ item }: { item: any }) {
 }
 
 function PromptCard({ item }: { item: any }) {
+  const model = item.generated_model || modelFromText(item.notes);
   return (
     <article className="rounded border bg-slate-50 p-4">
-      <h3 className="font-bold">{item.version_name}</h3>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="font-bold">{item.version_name}</h3>
+          <ModelBadge model={model} />
+        </div>
+        <CopyButton text={[item.prompt_en, item.prompt_cn, item.negative_prompt].filter(Boolean).join('\n\n')} />
+      </div>
       <p className="mt-1 text-sm text-slate-600">{item.image_goal}</p>
       <div className="mt-3 grid gap-3 lg:grid-cols-2">
         <CopyBlock title="英文 Prompt" text={item.prompt_en} />
@@ -468,6 +494,7 @@ function PromptCard({ item }: { item: any }) {
 }
 
 function AplusCard({ item }: { item: any }) {
+  const model = item.generated_model || modelFromText(item.image_prompt_notes);
   const allText = [
     item.banner_copy,
     item.brand_story_copy,
@@ -480,7 +507,10 @@ function AplusCard({ item }: { item: any }) {
   return (
     <article className="rounded border bg-slate-50 p-4">
       <div className="flex items-start justify-between gap-3">
-        <h3 className="font-bold">{item.version_name}</h3>
+        <div>
+          <h3 className="font-bold">{item.version_name}</h3>
+          <ModelBadge model={model} />
+        </div>
         <CopyButton text={allText} />
       </div>
       <CopyBlock title="Banner Copy" text={item.banner_copy} />
@@ -491,6 +521,20 @@ function AplusCard({ item }: { item: any }) {
       <CopyBlock title="Comparison Chart" text={item.comparison_chart} />
       <CopyBlock title="Image Prompt Notes" text={item.image_prompt_notes} />
     </article>
+  );
+}
+
+function modelFromText(text?: string) {
+  const match = String(text || '').match(/Model:\s*([^\n]+)/);
+  return match?.[1]?.trim().replace(/\.$/, '') || '';
+}
+
+function ModelBadge({ model }: { model?: string }) {
+  if (!model) return null;
+  return (
+    <span className="mt-1 inline-flex rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">
+      模型来源：{model}
+    </span>
   );
 }
 
