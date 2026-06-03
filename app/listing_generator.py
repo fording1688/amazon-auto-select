@@ -92,7 +92,7 @@ def _safe_float(value: Any) -> float | None:
     return float(match.group(0)) if match else None
 
 
-def _build_ai_context(project: ListingProject, inputs: ListingProjectInput | None, competitors: list[CompetitorReference]) -> dict[str, Any]:
+def _build_ai_context(project: ListingProject, inputs: ListingProjectInput | None, competitors: list[CompetitorReference], selected_model: str | None = None) -> dict[str, Any]:
     input_data = {}
     if inputs:
         input_data = {
@@ -124,14 +124,16 @@ def _build_ai_context(project: ListingProject, inputs: ListingProjectInput | Non
         "product_inputs": input_data,
         "competitor_references": competitor_data,
         "derived_competitor_terms": _competitor_terms(competitors, limit=20),
+        "selected_model": _text(selected_model),
         "privacy_note": "Do not infer or expose seller identity, account, email, store name, supplier, cost, or private operational data.",
     }
 
 
-def _call_listing_llm(task: str, context: dict[str, Any], schema_hint: str) -> dict[str, Any] | None:
+def _call_listing_llm(task: str, context: dict[str, Any], schema_hint: str, model: str | None = None) -> dict[str, Any] | None:
     settings = get_settings()
     if not settings.openai_api_key:
         return None
+    selected_model = _text(model) or settings.openai_model
     client = get_openai_client()
     system_prompt = (
         "You are a senior Amazon US listing strategist for hardware tools, diamond tools, CBN grinding wheels, "
@@ -156,7 +158,7 @@ Required JSON shape:
 {schema_hint}
 """
     response = client.chat.completions.create(
-        model=settings.openai_model,
+        model=selected_model,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
@@ -184,7 +186,7 @@ def _ai_listing_data(context: dict[str, Any]) -> dict[str, Any] | None:
     }
   ]
 }"""
-    return _call_listing_llm("Generate 5 differentiated Amazon listing copy versions.", context, schema)
+    return _call_listing_llm("Generate 5 differentiated Amazon listing copy versions.", context, schema, context.get("selected_model"))
 
 
 def _ai_image_prompt_data(context: dict[str, Any]) -> dict[str, Any] | None:
@@ -205,7 +207,7 @@ def _ai_image_prompt_data(context: dict[str, Any]) -> dict[str, Any] | None:
     }
   ]
 }"""
-    return _call_listing_llm("Generate Amazon listing image and A+ image prompts.", context, schema)
+    return _call_listing_llm("Generate Amazon listing image and A+ image prompts.", context, schema, context.get("selected_model"))
 
 
 def _ai_aplus_data(context: dict[str, Any]) -> dict[str, Any] | None:
@@ -221,7 +223,7 @@ def _ai_aplus_data(context: dict[str, Any]) -> dict[str, Any] | None:
     "image_prompt_notes": "Chinese image prompt and compliance notes"
   }
 }"""
-    return _call_listing_llm("Generate a practical Amazon A+ content plan.", context, schema)
+    return _call_listing_llm("Generate a practical Amazon A+ content plan.", context, schema, context.get("selected_model"))
 
 
 def create_listing_project(db: Session, payload: dict[str, Any], user_id: int | None = None) -> ListingProject:
@@ -424,10 +426,11 @@ def _risk_notes(inputs: ListingProjectInput | None) -> str:
     return "避免使用高风险表达：" + ", ".join(risky) + "。兼容性产品避免 official/original/authorized，优先使用 Compatible with / Replacement for。"
 
 
-def generate_listing_versions(db: Session, project_id: int, user_id: int | None = None) -> list[ListingVersion]:
+def generate_listing_versions(db: Session, project_id: int, user_id: int | None = None, model: str | None = None) -> list[ListingVersion]:
     project, inputs, competitors = _context(db, project_id, user_id=user_id)
+    selected_model = _text(model) or get_settings().openai_model
     try:
-        ai_data = _ai_listing_data(_build_ai_context(project, inputs, competitors))
+        ai_data = _ai_listing_data(_build_ai_context(project, inputs, competitors, selected_model=selected_model))
     except Exception:
         ai_data = None
     if ai_data and _as_list(ai_data.get("versions")):
@@ -449,7 +452,7 @@ def generate_listing_versions(db: Session, project_id: int, user_id: int | None 
                 seo_score=_safe_float(item.get("seo_score")),
                 conversion_score=_safe_float(item.get("conversion_score")),
                 compliance_risk_notes=_text(item.get("compliance_risk_notes")) or _risk_notes(inputs),
-                generation_notes=(_text(item.get("generation_notes")) or "AI generated via configured LLM.") + f" Model: {get_settings().openai_model}.",
+                generation_notes=(_text(item.get("generation_notes")) or "AI generated via configured LLM.") + f" Model: {selected_model}.",
             )
             db.add(version)
             created.append(version)
@@ -539,10 +542,11 @@ IMAGE_TYPES = [
 ]
 
 
-def generate_image_prompts(db: Session, project_id: int, user_id: int | None = None) -> list[ImagePromptVersion]:
+def generate_image_prompts(db: Session, project_id: int, user_id: int | None = None, model: str | None = None) -> list[ImagePromptVersion]:
     project, inputs, competitors = _context(db, project_id, user_id=user_id)
+    selected_model = _text(model) or get_settings().openai_model
     try:
-        ai_data = _ai_image_prompt_data(_build_ai_context(project, inputs, competitors))
+        ai_data = _ai_image_prompt_data(_build_ai_context(project, inputs, competitors, selected_model=selected_model))
     except Exception:
         ai_data = None
     if ai_data and _as_list(ai_data.get("image_prompts")):
@@ -560,7 +564,7 @@ def generate_image_prompts(db: Session, project_id: int, user_id: int | None = N
                 prompt_cn=_text(item.get("prompt_cn")),
                 negative_prompt=_text(item.get("negative_prompt")) or "Do not copy competitor images, logos, brand elements, or misleading accessories.",
                 size_recommendation=_text(item.get("size_recommendation")) or "Amazon square 2000x2000 for listing images.",
-                notes=_text(item.get("notes")) or f"AI generated via {get_settings().openai_model}.",
+                notes=_text(item.get("notes")) or f"AI generated via {selected_model}.",
             )
             db.add(prompt)
             created.append(prompt)
@@ -623,10 +627,11 @@ def generate_image_prompts(db: Session, project_id: int, user_id: int | None = N
     return created
 
 
-def generate_aplus_version(db: Session, project_id: int, user_id: int | None = None) -> AplusVersion:
+def generate_aplus_version(db: Session, project_id: int, user_id: int | None = None, model: str | None = None) -> AplusVersion:
     project, inputs, competitors = _context(db, project_id, user_id=user_id)
+    selected_model = _text(model) or get_settings().openai_model
     try:
-        ai_data = _ai_aplus_data(_build_ai_context(project, inputs, competitors))
+        ai_data = _ai_aplus_data(_build_ai_context(project, inputs, competitors, selected_model=selected_model))
     except Exception:
         ai_data = None
     if ai_data and isinstance(ai_data.get("aplus"), dict):
@@ -640,7 +645,7 @@ def generate_aplus_version(db: Session, project_id: int, user_id: int | None = N
             specification_module=_text(item.get("specification_module")),
             application_module=_text(item.get("application_module")),
             comparison_chart=_text(item.get("comparison_chart")),
-            image_prompt_notes=(_text(item.get("image_prompt_notes")) or "AI generated A+ plan.") + f" Model: {get_settings().openai_model}.",
+            image_prompt_notes=(_text(item.get("image_prompt_notes")) or "AI generated A+ plan.") + f" Model: {selected_model}.",
         )
         db.add(version)
         project.status = "ready"

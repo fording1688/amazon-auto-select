@@ -17,10 +17,21 @@ const inputFields = [
   ['compliance_notes', '合规备注 / 不能写的宣传点'],
 ] as const;
 
+const modelOptions = [
+  { label: '使用后端默认模型', value: '' },
+  { label: 'OpenAI GPT-4o mini - 便宜快', value: 'openai/gpt-4o-mini' },
+  { label: 'OpenAI GPT-4o - 文案更稳', value: 'openai/gpt-4o' },
+  { label: 'OpenAI GPT-4.1 mini - 性价比', value: 'openai/gpt-4.1-mini' },
+  { label: 'Claude 3.5 Sonnet - 长文案强', value: 'anthropic/claude-3.5-sonnet' },
+  { label: 'Gemini 2.5 Pro - 推理强', value: 'google/gemini-2.5-pro' },
+  { label: 'DeepSeek Chat - 便宜中文好', value: 'deepseek/deepseek-chat' },
+] as const;
+
 export default function ListingProjectDetailPage({ params }: { params: { id: string } }) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [selectedModel, setSelectedModel] = useState('');
   const [projectMessage, setProjectMessage] = useState('');
   const [competitorMessage, setCompetitorMessage] = useState('');
 
@@ -37,10 +48,14 @@ export default function ListingProjectDetailPage({ params }: { params: { id: str
     setLoading(true);
     setMessage('');
     try {
-      const response = await authFetch(`/api/listing-projects/${params.id}/${path}`, { method: 'POST' });
+      const response = await authFetch(`/api/listing-projects/${params.id}/${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: selectedModel }),
+      });
       const result = await response.json();
       if (!response.ok) throw new Error(result.detail || '生成失败');
-      setMessage(`${label} 已生成并保存版本。`);
+      setMessage(`${label} 已生成并保存版本。${selectedModel ? `本次使用模型：${selectedModel}` : '本次使用后端默认模型。'}`);
       await load();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : '生成失败');
@@ -176,6 +191,18 @@ export default function ListingProjectDetailPage({ params }: { params: { id: str
       <section className="mb-6 rounded-lg border bg-white p-5" id="generate">
         <h2 className="text-xl font-bold">生成操作</h2>
         <p className="mt-2 text-sm text-slate-600">生成结果都会保存为新版本，不会覆盖旧内容。</p>
+        <label className="mt-4 block max-w-xl text-sm font-semibold text-slate-700">
+          选择本次生成模型
+          <select
+            className="mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2"
+            value={selectedModel}
+            onChange={(event) => setSelectedModel(event.target.value)}
+          >
+            {modelOptions.map((option) => (
+              <option key={option.label} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
         <div className="mt-4 flex flex-wrap gap-3">
           <button className="rounded-md bg-blue-700 px-4 py-2 font-semibold text-white disabled:opacity-50" disabled={loading} onClick={() => generate('generate-listing', 'Listing 文案')}>生成 Listing 文案</button>
           <button className="rounded-md bg-blue-700 px-4 py-2 font-semibold text-white disabled:opacity-50" disabled={loading} onClick={() => generate('generate-image-prompts', '图片 Prompt')}>生成图片 Prompt</button>

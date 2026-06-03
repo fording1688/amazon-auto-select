@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
@@ -101,25 +101,28 @@ def delete_competitor(project_id: int, competitor_id: int, db: Session = Depends
 
 
 @router.post("/{project_id}/generate-listing")
-def generate_listing(project_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def generate_listing(project_id: int, payload: dict[str, Any] | None = Body(default=None), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     try:
-        return {"items": [serialize_listing(item) for item in generate_listing_versions(db, project_id, user_id=user.id)]}
+        payload = payload or {}
+        return {"items": [serialize_listing(item) for item in generate_listing_versions(db, project_id, user_id=user.id, model=payload.get("model"))]}
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/{project_id}/generate-image-prompts")
-def generate_images(project_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def generate_images(project_id: int, payload: dict[str, Any] | None = Body(default=None), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     try:
-        return {"items": [serialize_image_prompt(item) for item in generate_image_prompts(db, project_id, user_id=user.id)]}
+        payload = payload or {}
+        return {"items": [serialize_image_prompt(item) for item in generate_image_prompts(db, project_id, user_id=user.id, model=payload.get("model"))]}
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/{project_id}/generate-aplus")
-def generate_aplus(project_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def generate_aplus(project_id: int, payload: dict[str, Any] | None = Body(default=None), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     try:
-        return serialize_aplus(generate_aplus_version(db, project_id, user_id=user.id))
+        payload = payload or {}
+        return serialize_aplus(generate_aplus_version(db, project_id, user_id=user.id, model=payload.get("model")))
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
