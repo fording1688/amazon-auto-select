@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
+from app.llm_client import get_openai_client
 from app.models import (
     AplusVersion,
     CompetitorReference,
@@ -57,6 +60,168 @@ def _text(value: Any) -> str:
 def _split_terms(value: str | None) -> list[str]:
     terms = re.split(r"[,;\n]+", _text(value))
     return [term.strip() for term in terms if term.strip()]
+
+
+def _json(data: Any) -> str:
+    return json.dumps(data, ensure_ascii=False, default=str)
+
+
+def _safe_json_loads(raw: str) -> dict[str, Any]:
+    raw = raw.strip()
+    if raw.startswith("```"):
+        raw = raw.strip("`").removeprefix("json").strip()
+    return json.loads(raw)
+
+
+def _as_list(value: Any, limit: int | None = None) -> list[Any]:
+    if isinstance(value, list):
+        items = value
+    elif value:
+        items = [value]
+    else:
+        items = []
+    return items[:limit] if limit else items
+
+
+def _safe_float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    match = re.search(r"\d+(?:\.\d+)?", str(value))
+    return float(match.group(0)) if match else None
+
+
+def _build_ai_context(project: ListingProject, inputs: ListingProjectInput | None, competitors: list[CompetitorReference]) -> dict[str, Any]:
+    input_data = {}
+    if inputs:
+        input_data = {
+            field: _text(getattr(inputs, field))
+            for field in INPUT_FIELDS
+            if _text(getattr(inputs, field))
+        }
+    competitor_data = []
+    for index, ref in enumerate(competitors[:12], start=1):
+        asin = ""
+        if ref.competitor_url:
+            asin = (re.search(r"/dp/([A-Z0-9]{10})", ref.competitor_url, flags=re.I) or re.search(r"/gp/product/([A-Z0-9]{10})", ref.competitor_url, flags=re.I) or [None, ""])[1]
+        competitor_data.append(
+            {
+                "ref_id": f"COMP-{index:02d}",
+                "url": ref.competitor_url,
+                "asin": asin,
+                "what_to_reference": ref.what_to_reference,
+                "what_to_avoid": ref.what_to_avoid,
+            }
+        )
+    return {
+        "marketplace": project.marketplace,
+        "category": project.category,
+        "product_name": project.product_name or project.project_name,
+        "target_price": project.target_price,
+        "fulfillment_method": project.fulfillment_method,
+        "seller_notes": project.notes,
+        "product_inputs": input_data,
+        "competitor_references": competitor_data,
+        "derived_competitor_terms": _competitor_terms(competitors, limit=20),
+        "privacy_note": "Do not infer or expose seller identity, account, email, store name, supplier, cost, or private operational data.",
+    }
+
+
+def _call_listing_llm(task: str, context: dict[str, Any], schema_hint: str) -> dict[str, Any] | None:
+    settings = get_settings()
+    if not settings.openai_api_key:
+        return None
+    client = get_openai_client()
+    system_prompt = (
+        "You are a senior Amazon US listing strategist for hardware tools, diamond tools, CBN grinding wheels, "
+        "glass tools, industrial consumables, and replacement parts. Generate practical, conversion-oriented, "
+        "Amazon-compliant content. Use competitor URLs only for keyword/category/structure inspiration. "
+        "Do not copy competitor copy, images, logos, brand claims, or copyrighted expression. "
+        "Avoid high-risk words such as best, guaranteed, official, original, authorized, lifetime unless the seller proves them. "
+        "Output valid JSON only."
+    )
+    user_prompt = f"""Task: {task}
+
+Seller goal:
+- Build a practical Amazon US listing draft for a niche tool/consumable/replacement product.
+- Prefer clear specs, compatibility wording, package quantity, use cases, and buyer risk reduction.
+- If compatibility is involved, use "Compatible with" / "Replacement for" style wording and avoid official affiliation claims.
+- Do not include private seller identity or store data.
+
+Context JSON:
+{_json(context)}
+
+Required JSON shape:
+{schema_hint}
+"""
+    response = client.chat.completions.create(
+        model=settings.openai_model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=0.55,
+        response_format={"type": "json_object"},
+    )
+    raw = response.choices[0].message.content or ""
+    return _safe_json_loads(raw)
+
+
+def _ai_listing_data(context: dict[str, Any]) -> dict[str, Any] | None:
+    schema = """{
+  "versions": [
+    {
+      "version_name": "Listing Version 1 - SEO Balanced",
+      "title": "Amazon title, max 190 chars",
+      "bullet_points": ["five bullet points, English, concrete specs and benefits"],
+      "description": "English product description",
+      "backend_search_terms": "search terms under 240 bytes, no commas if possible",
+      "seo_score": 0-100,
+      "conversion_score": 0-100,
+      "compliance_risk_notes": "Chinese risk notes",
+      "generation_notes": "Chinese explanation of strategy"
+    }
+  ]
+}"""
+    return _call_listing_llm("Generate 5 differentiated Amazon listing copy versions.", context, schema)
+
+
+def _ai_image_prompt_data(context: dict[str, Any]) -> dict[str, Any] | None:
+    schema = """{
+  "image_prompts": [
+    {
+      "version_name": "Main Image Prompt V1",
+      "image_type": "Main Image / Size Image / Feature Image / Compatibility Image / Application Image / Package Includes Image / A+ Banner / A+ Feature Module / A+ Comparison Chart",
+      "image_goal": "goal",
+      "required_reference_images": "what real images user should provide",
+      "reference_usage_notes": "how to use references safely",
+      "image_text": "exact text/callouts for the image, or No text on image",
+      "prompt_en": "English image-generation prompt",
+      "prompt_cn": "Chinese explanation prompt",
+      "negative_prompt": "negative prompt",
+      "size_recommendation": "Amazon image size recommendation",
+      "notes": "Chinese operational note"
+    }
+  ]
+}"""
+    return _call_listing_llm("Generate Amazon listing image and A+ image prompts.", context, schema)
+
+
+def _ai_aplus_data(context: dict[str, Any]) -> dict[str, Any] | None:
+    schema = """{
+  "aplus": {
+    "version_name": "A+ Version 1 - Conversion Structure",
+    "banner_copy": "English banner copy",
+    "brand_story_copy": "English brand story without private seller name",
+    "feature_modules": "JSON string or readable module list with module title, copy and image direction",
+    "specification_module": "spec table copy",
+    "application_module": "application/use-case module copy",
+    "comparison_chart": "comparison chart plan",
+    "image_prompt_notes": "Chinese image prompt and compliance notes"
+  }
+}"""
+    return _call_listing_llm("Generate a practical Amazon A+ content plan.", context, schema)
 
 
 def create_listing_project(db: Session, payload: dict[str, Any], user_id: int | None = None) -> ListingProject:
@@ -261,6 +426,39 @@ def _risk_notes(inputs: ListingProjectInput | None) -> str:
 
 def generate_listing_versions(db: Session, project_id: int, user_id: int | None = None) -> list[ListingVersion]:
     project, inputs, competitors = _context(db, project_id, user_id=user_id)
+    try:
+        ai_data = _ai_listing_data(_build_ai_context(project, inputs, competitors))
+    except Exception:
+        ai_data = None
+    if ai_data and _as_list(ai_data.get("versions")):
+        created = []
+        for index, item in enumerate(_as_list(ai_data.get("versions"), limit=5), start=1):
+            bullets = [str(bullet or "").strip() for bullet in _as_list(item.get("bullet_points"), limit=5)]
+            bullets = (bullets + [""] * 5)[:5]
+            version = ListingVersion(
+                project_id=project_id,
+                version_name=_text(item.get("version_name")) or f"AI Listing Version {index}",
+                title=_text(item.get("title"))[:190],
+                bullet_1=bullets[0],
+                bullet_2=bullets[1],
+                bullet_3=bullets[2],
+                bullet_4=bullets[3],
+                bullet_5=bullets[4],
+                description=_text(item.get("description")),
+                backend_search_terms=_text(item.get("backend_search_terms"))[:240],
+                seo_score=_safe_float(item.get("seo_score")),
+                conversion_score=_safe_float(item.get("conversion_score")),
+                compliance_risk_notes=_text(item.get("compliance_risk_notes")) or _risk_notes(inputs),
+                generation_notes=(_text(item.get("generation_notes")) or "AI generated via configured LLM.") + f" Model: {get_settings().openai_model}.",
+            )
+            db.add(version)
+            created.append(version)
+        project.status = "ready"
+        db.commit()
+        for item in created:
+            db.refresh(item)
+        return created
+
     keywords = _base_keywords(inputs, competitors)
     primary = keywords[0] if keywords else (project.product_name or project.project_name)
     size = _text(inputs.size if inputs else "")
@@ -343,6 +541,35 @@ IMAGE_TYPES = [
 
 def generate_image_prompts(db: Session, project_id: int, user_id: int | None = None) -> list[ImagePromptVersion]:
     project, inputs, competitors = _context(db, project_id, user_id=user_id)
+    try:
+        ai_data = _ai_image_prompt_data(_build_ai_context(project, inputs, competitors))
+    except Exception:
+        ai_data = None
+    if ai_data and _as_list(ai_data.get("image_prompts")):
+        created = []
+        for index, item in enumerate(_as_list(ai_data.get("image_prompts"), limit=9), start=1):
+            prompt = ImagePromptVersion(
+                project_id=project_id,
+                version_name=_text(item.get("version_name")) or f"AI Image Prompt {index}",
+                image_type=_text(item.get("image_type")) or "Listing Image",
+                image_goal=_text(item.get("image_goal")),
+                required_reference_images=_text(item.get("required_reference_images")) or "真实产品图；包装图；必要时上传使用场景图。",
+                reference_usage_notes=_text(item.get("reference_usage_notes")) or "真实产品图用于外观准确性，同行资料只用于结构参考，不复制。",
+                image_text=_text(item.get("image_text")),
+                prompt_en=_text(item.get("prompt_en")),
+                prompt_cn=_text(item.get("prompt_cn")),
+                negative_prompt=_text(item.get("negative_prompt")) or "Do not copy competitor images, logos, brand elements, or misleading accessories.",
+                size_recommendation=_text(item.get("size_recommendation")) or "Amazon square 2000x2000 for listing images.",
+                notes=_text(item.get("notes")) or f"AI generated via {get_settings().openai_model}.",
+            )
+            db.add(prompt)
+            created.append(prompt)
+        project.status = "ready"
+        db.commit()
+        for item in created:
+            db.refresh(item)
+        return created
+
     product = project.product_name or project.project_name
     competitor_note = "Use competitor reference only as layout inspiration. Do not copy exact design, text, logo, brand, product appearance, or copyrighted elements."
     created = []
@@ -398,6 +625,29 @@ def generate_image_prompts(db: Session, project_id: int, user_id: int | None = N
 
 def generate_aplus_version(db: Session, project_id: int, user_id: int | None = None) -> AplusVersion:
     project, inputs, competitors = _context(db, project_id, user_id=user_id)
+    try:
+        ai_data = _ai_aplus_data(_build_ai_context(project, inputs, competitors))
+    except Exception:
+        ai_data = None
+    if ai_data and isinstance(ai_data.get("aplus"), dict):
+        item = ai_data["aplus"]
+        version = AplusVersion(
+            project_id=project_id,
+            version_name=_text(item.get("version_name")) or "AI A+ Version 1",
+            banner_copy=_text(item.get("banner_copy")),
+            brand_story_copy=_text(item.get("brand_story_copy")),
+            feature_modules=_text(item.get("feature_modules")),
+            specification_module=_text(item.get("specification_module")),
+            application_module=_text(item.get("application_module")),
+            comparison_chart=_text(item.get("comparison_chart")),
+            image_prompt_notes=(_text(item.get("image_prompt_notes")) or "AI generated A+ plan.") + f" Model: {get_settings().openai_model}.",
+        )
+        db.add(version)
+        project.status = "ready"
+        db.commit()
+        db.refresh(version)
+        return version
+
     product = project.product_name or project.project_name
     features = [
         {"module": "Core Feature", "copy_en": _text(inputs.advantages if inputs else "") or "Clear specifications and dependable replacement performance.", "image_prompt": "Create a clean feature module showing product close-up with 3 benefit callouts."},
