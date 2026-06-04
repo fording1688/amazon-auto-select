@@ -24,6 +24,7 @@ export default function ListingProjectsPage() {
   const [items, setItems] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [copyingId, setCopyingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -69,6 +70,25 @@ export default function ListingProjectsPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : '复制失败');
       setCopyingId(null);
+    }
+  }
+
+  async function deleteProject(project: Project) {
+    const ok = window.confirm(
+      `确定删除这个 Listing 项目吗？\n\n${project.project_name}\n\n删除后会同时删除：产品输入信息、同行参考资料、Listing 文案版本、图片 Prompt 版本、A+ 页面版本。这个操作不能恢复。`
+    );
+    if (!ok) return;
+    setDeletingId(project.id);
+    setError('');
+    try {
+      const response = await authFetch(`/api/listing-projects/${project.id}`, { method: 'DELETE' });
+      const data = await readApiJson(response);
+      if (!response.ok) throw new Error(data.detail || '删除失败');
+      setItems((current) => current.filter((item) => item.id !== project.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '删除失败');
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -123,6 +143,14 @@ export default function ListingProjectsPage() {
                           type="button"
                         >
                           {copyingId === item.id ? '复制中...' : '复制基本信息'}
+                        </button>
+                        <button
+                          className="font-semibold text-red-700 disabled:opacity-50"
+                          disabled={deletingId === item.id}
+                          onClick={() => deleteProject(item)}
+                          type="button"
+                        >
+                          {deletingId === item.id ? '删除中...' : '删除'}
                         </button>
                       </div>
                     </td>

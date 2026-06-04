@@ -398,6 +398,31 @@ def copy_listing_project(db: Session, project_id: int, user_id: int | None = Non
     return copy_project
 
 
+def delete_listing_project(db: Session, project_id: int, user_id: int | None = None) -> dict[str, int | bool]:
+    project = get_listing_project(db, project_id, user_id=user_id)
+    counts = {
+        "inputs": 0,
+        "competitors": 0,
+        "listing_versions": 0,
+        "image_prompt_versions": 0,
+        "aplus_versions": 0,
+    }
+    for model, key in [
+        (ListingProjectInput, "inputs"),
+        (CompetitorReference, "competitors"),
+        (ListingVersion, "listing_versions"),
+        (ImagePromptVersion, "image_prompt_versions"),
+        (AplusVersion, "aplus_versions"),
+    ]:
+        rows = db.execute(select(model).where(model.project_id == project_id)).scalars().all()
+        counts[key] = len(rows)
+        for row in rows:
+            db.delete(row)
+    db.delete(project)
+    db.commit()
+    return {"ok": True, "deleted_id": project_id, **counts}
+
+
 def upsert_project_inputs(db: Session, project_id: int, payload: dict[str, Any], user_id: int | None = None) -> ListingProjectInput:
     project = get_listing_project(db, project_id, user_id=user_id)
     _ensure_draft(project)

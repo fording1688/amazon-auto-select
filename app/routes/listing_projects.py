@@ -11,6 +11,7 @@ from app.listing_generator import (
     add_competitor_reference,
     copy_listing_project,
     create_listing_project,
+    delete_listing_project,
     generate_aplus_version,
     generate_image_prompts,
     generate_listing_versions,
@@ -66,6 +67,14 @@ def update_project(project_id: int, payload: dict[str, Any], db: Session = Depen
 def copy_project(project_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     try:
         return serialize_project(copy_listing_project(db, project_id, user_id=user.id))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/{project_id}")
+def delete_project(project_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    try:
+        return delete_listing_project(db, project_id, user_id=user.id)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
