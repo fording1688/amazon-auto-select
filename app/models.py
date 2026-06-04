@@ -372,7 +372,7 @@ class ListingProjectInput(Base):
     __tablename__ = "listing_project_inputs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("listing_projects.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("listing_projects.id", ondelete="CASCADE"), nullable=False, index=True)
     size: Mapped[Optional[str]] = mapped_column(Text)
     material: Mapped[Optional[str]] = mapped_column(Text)
     color: Mapped[Optional[str]] = mapped_column(Text)
@@ -401,7 +401,7 @@ class CompetitorReference(Base):
     __tablename__ = "competitor_references"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("listing_projects.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("listing_projects.id", ondelete="CASCADE"), nullable=False, index=True)
     competitor_url: Mapped[Optional[str]] = mapped_column(Text)
     competitor_title: Mapped[Optional[str]] = mapped_column(Text)
     competitor_bullets: Mapped[Optional[str]] = mapped_column(Text)
@@ -420,7 +420,7 @@ class ListingVersion(Base):
     __tablename__ = "listing_versions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("listing_projects.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("listing_projects.id", ondelete="CASCADE"), nullable=False, index=True)
     version_name: Mapped[str] = mapped_column(String(120), default="Listing Version", index=True)
     title: Mapped[Optional[str]] = mapped_column(Text)
     bullet_1: Mapped[Optional[str]] = mapped_column(Text)
@@ -441,7 +441,7 @@ class ImagePromptVersion(Base):
     __tablename__ = "image_prompt_versions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("listing_projects.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("listing_projects.id", ondelete="CASCADE"), nullable=False, index=True)
     version_name: Mapped[str] = mapped_column(String(120), default="Image Prompt Version", index=True)
     image_type: Mapped[Optional[str]] = mapped_column(String(120), index=True)
     image_goal: Mapped[Optional[str]] = mapped_column(Text)
@@ -460,7 +460,7 @@ class AplusVersion(Base):
     __tablename__ = "aplus_versions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("listing_projects.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("listing_projects.id", ondelete="CASCADE"), nullable=False, index=True)
     version_name: Mapped[str] = mapped_column(String(120), default="A+ Version", index=True)
     banner_copy: Mapped[Optional[str]] = mapped_column(Text)
     brand_story_copy: Mapped[Optional[str]] = mapped_column(Text)

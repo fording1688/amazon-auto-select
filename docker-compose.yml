@@ -1,0 +1,61 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: amazon_auto_select
+      POSTGRES_USER: amazon
+      POSTGRES_PASSWORD: amazon
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U amazon -d amazon_auto_select"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    environment:
+      DATABASE_URL: postgresql://amazon:amazon@db:5432/amazon_auto_select
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENROUTER_HTTP_REFERER: ${OPENROUTER_HTTP_REFERER:-}
+      OPENROUTER_APP_NAME: ${OPENROUTER_APP_NAME:-amazon-auto-select}
+      AMAZON_API_PROVIDER: ${AMAZON_API_PROVIDER:-mock}
+      AMAZON_ADS_API_ENABLED: ${AMAZON_ADS_API_ENABLED:-false}
+      DEFAULT_AD_TEST_COST: ${DEFAULT_AD_TEST_COST:-15}
+      SERPAPI_KEY: ${SERPAPI_KEY:-}
+      RAINFOREST_API_KEY: ${RAINFOREST_API_KEY:-}
+      KEEPA_API_KEY: ${KEEPA_API_KEY:-}
+      FEISHU_WEBHOOK_URL: ${FEISHU_WEBHOOK_URL:-}
+      DAILY_RUN_HOUR: ${DAILY_RUN_HOUR:-8}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:-change-me-local-dev-secret}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-10080}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - report_data:/app/amazon_reports
+    ports:
+      - "${BACKEND_PORT:-8005}:8005"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://127.0.0.1:8005}
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  report_data:

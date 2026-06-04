@@ -4,7 +4,7 @@ import json
 import re
 from typing import Any
 
-from sqlalchemy import desc, select
+from sqlalchemy import delete, desc, func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -425,10 +425,8 @@ def delete_listing_project(db: Session, project_id: int, user_id: int | None = N
         (ImagePromptVersion, "image_prompt_versions"),
         (AplusVersion, "aplus_versions"),
     ]:
-        rows = db.execute(select(model).where(model.project_id == project_id)).scalars().all()
-        counts[key] = len(rows)
-        for row in rows:
-            db.delete(row)
+        counts[key] = db.execute(select(func.count()).select_from(model).where(model.project_id == project_id)).scalar_one()
+        db.execute(delete(model).where(model.project_id == project_id))
     db.flush()
     db.delete(project)
     db.commit()

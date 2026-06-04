@@ -30,6 +30,40 @@ uvicorn app.main:app --reload
 http://127.0.0.1:8000
 ```
 
+## Docker 本地运行
+
+本仓库可以用 Docker Compose 一次启动本地 PostgreSQL、FastAPI 后端和 Next.js 静态前端：
+
+```bash
+cp .env.docker.example .env
+docker compose up --build
+```
+
+访问地址：
+
+```text
+前端：http://127.0.0.1:3000
+后端：http://127.0.0.1:8005
+```
+
+默认使用 mock Amazon 数据，不需要真实 API Key。容器环境下后端会连接 Compose 内的 PostgreSQL：
+
+```env
+DATABASE_URL=postgresql://amazon:amazon@db:5432/amazon_auto_select
+```
+
+上传报表目录和数据库数据会保存在 Docker volumes 中。停止服务：
+
+```bash
+docker compose down
+```
+
+如果要同时删除本地数据库和报表 volume：
+
+```bash
+docker compose down -v
+```
+
 ## 配置
 
 `.env` 支持：
