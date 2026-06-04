@@ -147,7 +147,7 @@ def _build_ai_context(
     inputs: ListingProjectInput | None,
     competitors: list[CompetitorReference],
     selected_model: str | None = None,
-    version_count: int = 5,
+    version_count: int = 1,
     product_reference_image: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     input_data = {}
@@ -251,7 +251,7 @@ Required JSON shape:
 
 
 def _ai_listing_data(context: dict[str, Any]) -> dict[str, Any] | None:
-    count = _safe_count(context.get("version_count"), default=5, max_value=10)
+    count = _safe_count(context.get("version_count"), default=1, max_value=10)
     schema = """{
   "versions": [
     {
@@ -271,12 +271,14 @@ def _ai_listing_data(context: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _ai_image_prompt_data(context: dict[str, Any]) -> dict[str, Any] | None:
-    count = _safe_count(context.get("version_count"), default=9, max_value=20)
+    image_set_count = _safe_count(context.get("image_set_count"), default=1, max_value=5)
+    image_types = _as_list(context.get("image_types_per_set"))
+    count = image_set_count * max(1, len(image_types))
     schema = """{
   "image_prompts": [
     {
       "version_name": "Main Image Prompt V1",
-      "image_type": "Main Image / Size Image / Feature Image / Compatibility Image / Application Image / Package Includes Image / A+ Banner / A+ Feature Module / A+ Comparison Chart",
+      "image_type": "Main Image / Size Image / Feature Image / Compatibility Image / Application Image / Package Includes Image",
       "image_goal": "goal",
       "required_reference_images": "what real images user should provide",
       "reference_usage_notes": "how to use references safely",
@@ -290,7 +292,10 @@ def _ai_image_prompt_data(context: dict[str, Any]) -> dict[str, Any] | None:
   ]
 }"""
     return _call_listing_llm(
-        f"Generate exactly {count} Amazon image prompts using the selected model. Do not produce generic prompts. Cover the most important listing images first, then A+ modules if count allows.",
+        "Generate exactly "
+        f"{count} Amazon listing image prompts using the selected model: {image_set_count} complete product image set(s), "
+        f"each set covering these listing image types only: {', '.join(str(item) for item in image_types)}. "
+        "Do not generate A+ image modules here. Do not produce generic prompts.",
         context,
         schema,
         context.get("selected_model"),
@@ -543,12 +548,12 @@ def generate_listing_versions(
     project_id: int,
     user_id: int | None = None,
     model: str | None = None,
-    version_count: int = 5,
+    version_count: int = 1,
     product_reference_image: dict[str, Any] | None = None,
 ) -> list[ListingVersion]:
     project, inputs, competitors = _context(db, project_id, user_id=user_id)
     selected_model = _text(model) or get_settings().openai_model
-    count = _safe_count(version_count, default=5, max_value=10)
+    count = _safe_count(version_count, default=1, max_value=10)
     try:
         ai_data = _ai_listing_data(_build_ai_context(project, inputs, competitors, selected_model=selected_model, version_count=count, product_reference_image=product_reference_image))
     except Exception:
@@ -595,9 +600,6 @@ IMAGE_TYPES = [
     ("Compatibility Image", "Show compatible models or fitment notes without third-party logos"),
     ("Application Image", "Show realistic use case or workshop context"),
     ("Package Includes Image", "Show included quantity and what is not included"),
-    ("A+ Banner", "Brand-style wide hero image"),
-    ("A+ Feature Module", "Explain top features in a clean module"),
-    ("A+ Comparison Chart", "Compare variants/specs without misleading claims"),
 ]
 
 
@@ -606,14 +608,25 @@ def generate_image_prompts(
     project_id: int,
     user_id: int | None = None,
     model: str | None = None,
-    version_count: int = 9,
+    version_count: int = 1,
     product_reference_image: dict[str, Any] | None = None,
 ) -> list[ImagePromptVersion]:
     project, inputs, competitors = _context(db, project_id, user_id=user_id)
     selected_model = _text(model) or get_settings().openai_model
-    count = _safe_count(version_count, default=9, max_value=20)
+    image_set_count = _safe_count(version_count, default=1, max_value=5)
+    count = image_set_count * len(IMAGE_TYPES)
     try:
-        ai_data = _ai_image_prompt_data(_build_ai_context(project, inputs, competitors, selected_model=selected_model, version_count=count, product_reference_image=product_reference_image))
+        context = _build_ai_context(
+            project,
+            inputs,
+            competitors,
+            selected_model=selected_model,
+            version_count=count,
+            product_reference_image=product_reference_image,
+        )
+        context["image_set_count"] = image_set_count
+        context["image_types_per_set"] = [name for name, _ in IMAGE_TYPES]
+        ai_data = _ai_image_prompt_data(context)
     except Exception:
         ai_data = None
     if ai_data and _as_list(ai_data.get("image_prompts")):

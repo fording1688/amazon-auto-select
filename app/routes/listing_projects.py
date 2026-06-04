@@ -121,8 +121,8 @@ def generate_listing(project_id: int, payload: dict[str, Any] | None = Body(defa
                     project_id,
                     user_id=user.id,
                     model=payload.get("model"),
-                    version_count=payload.get("version_count") or 5,
-                    product_reference_image=payload.get("product_reference_image") or {},
+                    version_count=payload.get("version_count") or 1,
+                    product_reference_image={},
                 )
             ]
         }
@@ -142,7 +142,7 @@ def generate_images(project_id: int, payload: dict[str, Any] | None = Body(defau
                     project_id,
                     user_id=user.id,
                     model=payload.get("model"),
-                    version_count=payload.get("version_count") or 9,
+                    version_count=payload.get("version_count") or 1,
                     product_reference_image=payload.get("product_reference_image") or {},
                 )
             ]
@@ -155,16 +155,22 @@ def generate_images(project_id: int, payload: dict[str, Any] | None = Body(defau
 def generate_aplus(project_id: int, payload: dict[str, Any] | None = Body(default=None), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     try:
         payload = payload or {}
-        return serialize_aplus(
-            generate_aplus_version(
-                db,
-                project_id,
-                user_id=user.id,
-                model=payload.get("model"),
-                version_count=payload.get("version_count") or 1,
-                product_reference_image=payload.get("product_reference_image") or {},
-            )
-        )
+        count = max(1, min(5, int(payload.get("version_count") or 1)))
+        return {
+            "items": [
+                serialize_aplus(
+                    generate_aplus_version(
+                        db,
+                        project_id,
+                        user_id=user.id,
+                        model=payload.get("model"),
+                        version_count=1,
+                        product_reference_image=payload.get("product_reference_image") or {},
+                    )
+                )
+                for _ in range(count)
+            ]
+        }
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
