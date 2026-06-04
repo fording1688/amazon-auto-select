@@ -418,6 +418,7 @@ def delete_listing_project(db: Session, project_id: int, user_id: int | None = N
         counts[key] = len(rows)
         for row in rows:
             db.delete(row)
+    db.flush()
     db.delete(project)
     db.commit()
     return {"ok": True, "deleted_id": project_id, **counts}
