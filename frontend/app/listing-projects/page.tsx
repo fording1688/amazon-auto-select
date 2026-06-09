@@ -9,6 +9,7 @@ import ListingSubnav from './listing-subnav';
 type Project = {
   id: number;
   project_name: string;
+  project_type?: string;
   marketplace: string;
   brand?: string;
   category?: string;
@@ -51,6 +52,7 @@ export default function ListingProjectsPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             project_name: `${project.project_name || project.product_name || 'Listing 项目'} - 副本`,
+            project_type: project.project_type || 'manual_input',
             marketplace: project.marketplace || 'US',
             brand: project.brand || '',
             category: project.category || '',
@@ -113,6 +115,7 @@ export default function ListingProjectsPage() {
               <thead className="border-b text-slate-500">
                 <tr>
                   <th className="py-3">项目</th>
+                  <th>类型</th>
                   <th>产品</th>
                   <th>类目</th>
                   <th>价格</th>
@@ -127,6 +130,12 @@ export default function ListingProjectsPage() {
                     <td className="py-3 font-semibold">
                       {item.project_name}
                       <div className="mt-1 text-xs text-slate-500">{item.marketplace} · {item.brand || 'No Brand'}</div>
+                    </td>
+                    <td>
+                      <span className={`rounded-full px-2 py-1 text-xs font-semibold ${item.project_type === 'competitor_parse' ? 'bg-purple-50 text-purple-700' : 'bg-blue-50 text-blue-700'}`}>
+                        {projectTypeLabel(item.project_type)}
+                      </span>
+                      <div className="mt-1 max-w-32 text-xs text-slate-500">{projectTypeHelp(item.project_type)}</div>
                     </td>
                     <td>{item.product_name || '-'}</td>
                     <td>{item.category || '-'}</td>
@@ -164,4 +173,14 @@ export default function ListingProjectsPage() {
       </section>
     </main>
   );
+}
+
+function projectTypeLabel(value?: string) {
+  if (value === 'competitor_parse') return '竞品解析型';
+  return '资料录入型';
+}
+
+function projectTypeHelp(value?: string) {
+  if (value === 'competitor_parse') return '竞品链接解析后生成';
+  return '自有资料加同行参考';
 }

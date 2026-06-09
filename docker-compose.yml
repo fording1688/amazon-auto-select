@@ -1,6 +1,8 @@
 services:
   db:
     image: postgres:16-alpine
+    profiles:
+      - local-db
     environment:
       POSTGRES_DB: amazon_auto_select
       POSTGRES_USER: amazon
@@ -19,15 +21,25 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
+    env_file:
+      - .env
     environment:
-      DATABASE_URL: postgresql://amazon:amazon@db:5432/amazon_auto_select
+      DATABASE_URL: ${DATABASE_URL:-postgresql://amazon:amazon@db:5432/amazon_auto_select}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_TEXT_MODEL: ${OPENAI_TEXT_MODEL:-gpt-4.1-mini}
+      OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL:-gpt-image-2}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_ENDPOINT_URL: ${R2_ENDPOINT_URL:-}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME:-}
+      R2_PUBLIC_BASE_URL: ${R2_PUBLIC_BASE_URL:-}
       OPENROUTER_HTTP_REFERER: ${OPENROUTER_HTTP_REFERER:-}
       OPENROUTER_APP_NAME: ${OPENROUTER_APP_NAME:-amazon-auto-select}
       AMAZON_API_PROVIDER: ${AMAZON_API_PROVIDER:-mock}
       AMAZON_ADS_API_ENABLED: ${AMAZON_ADS_API_ENABLED:-false}
       DEFAULT_AD_TEST_COST: ${DEFAULT_AD_TEST_COST:-15}
+      SERPAPI_API_KEY: ${SERPAPI_API_KEY:-}
       SERPAPI_KEY: ${SERPAPI_KEY:-}
       RAINFOREST_API_KEY: ${RAINFOREST_API_KEY:-}
       KEEPA_API_KEY: ${KEEPA_API_KEY:-}
@@ -36,9 +48,6 @@ services:
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:-change-me-local-dev-secret}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-10080}
-    depends_on:
-      db:
-        condition: service_healthy
     volumes:
       - report_data:/app/amazon_reports
     ports:
@@ -50,10 +59,13 @@ services:
       context: ./frontend
       args:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://127.0.0.1:8005}
+    env_file:
+      - .env
     depends_on:
       - backend
     ports:
       - "${FRONTEND_PORT:-3000}:80"
+      - "${FRONTEND_HTTP_PORT:-80}:80"
     restart: unless-stopped
 
 volumes:

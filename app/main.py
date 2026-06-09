@@ -4,8 +4,9 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from app.config import get_settings
 from app.database import SessionLocal, init_db
-from app.routes import auth, copilot, keywords, listing_projects, operations, products, reports, research, tasks, tools
+from app.routes import amazon_references, auth, copilot, keywords, listing_projects, operations, products, reports, research, tasks, tools
 from app.scheduler import start_scheduler, stop_scheduler
 from app.report_importer import ensure_report_dirs
 from app.tasks import seed_keywords
@@ -16,7 +17,12 @@ templates = Jinja2Templates(directory="app/templates")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[
+        "http://localhost",
+        "http://127.0.0.1",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -24,6 +30,7 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(auth.router)
+app.include_router(amazon_references.router)
 app.include_router(copilot.router)
 app.include_router(listing_projects.router)
 app.include_router(keywords.router)
@@ -55,3 +62,10 @@ def on_shutdown() -> None:
 @app.get("/")
 def home(request: Request):
     return RedirectResponse(url="/products")
+
+
+@app.get("/health")
+def health():
+    settings = get_settings()
+    db_kind = "postgresql" if settings.database_url.startswith("postgresql") else "sqlite"
+    return {"status": "ok", "database": db_kind}

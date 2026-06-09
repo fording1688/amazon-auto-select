@@ -356,6 +356,7 @@ class ListingProject(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), index=True)
     project_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    project_type: Mapped[str] = mapped_column(String(40), default="manual_input", index=True)
     marketplace: Mapped[str] = mapped_column(String(30), default="US", index=True)
     brand: Mapped[Optional[str]] = mapped_column(String(120))
     category: Mapped[Optional[str]] = mapped_column(String(120), index=True)
@@ -454,6 +455,27 @@ class ImagePromptVersion(Base):
     size_recommendation: Mapped[Optional[str]] = mapped_column(Text)
     notes: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
+class ListingImageAsset(Base):
+    __tablename__ = "listing_image_assets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("listing_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), index=True)
+    image_type: Mapped[str] = mapped_column(String(80), default="other", index=True)
+    title: Mapped[Optional[str]] = mapped_column(String(255))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[Optional[str]] = mapped_column(String(120))
+    file_size: Mapped[Optional[int]] = mapped_column(Integer)
+    width: Mapped[Optional[int]] = mapped_column(Integer)
+    height: Mapped[Optional[int]] = mapped_column(Integer)
+    r2_bucket: Mapped[str] = mapped_column(String(255), nullable=False)
+    r2_key: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    public_url: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
 
 
 class AplusVersion(Base):

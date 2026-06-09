@@ -13,6 +13,7 @@ from app.models import (
     AplusVersion,
     CompetitorReference,
     ImagePromptVersion,
+    ListingImageAsset,
     ListingProject,
     ListingProjectInput,
     ListingVersion,
@@ -149,6 +150,9 @@ def _build_ai_context(
     selected_model: str | None = None,
     version_count: int = 1,
     product_reference_image: dict[str, Any] | None = None,
+    similar_product_references: list[dict[str, Any]] | None = None,
+    reference_insights: dict[str, Any] | None = None,
+    confirmed_product_facts: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     input_data = {}
     if inputs:
@@ -180,6 +184,9 @@ def _build_ai_context(
         "seller_notes": project.notes,
         "product_inputs": input_data,
         "competitor_references": competitor_data,
+        "similar_product_references_from_serpapi": similar_product_references or [],
+        "reference_insights_from_structured_json": reference_insights or {},
+        "confirmed_product_facts": confirmed_product_facts or {},
         "derived_competitor_terms": _competitor_terms(competitors, limit=20),
         "selected_model": _text(selected_model),
         "version_count": version_count,
@@ -192,13 +199,14 @@ def _call_listing_llm(task: str, context: dict[str, Any], schema_hint: str, mode
     settings = get_settings()
     if not settings.openai_api_key:
         return None
-    selected_model = _text(model) or settings.openai_model
+    selected_model = _text(model) or settings.openai_text_model or settings.openai_model
     client = get_openai_client()
     system_prompt = (
         "You are a senior Amazon US listing strategist for hardware tools, diamond tools, CBN grinding wheels, "
         "glass tools, industrial consumables, and replacement parts. Generate practical, conversion-oriented, "
         "Amazon-compliant content. Use competitor URLs only for keyword/category/structure inspiration. "
-        "Do not copy competitor copy, images, logos, brand claims, or copyrighted expression. "
+        "Use normalized SerpApi JSON and confirmed seller facts when provided. Do not guess product details from raw URLs. "
+        "Do not copy competitor copy, images, logos, brand claims, packaging, or copyrighted expression. "
         "Avoid high-risk words such as best, guaranteed, official, original, authorized, lifetime unless the seller proves them. "
         "Output valid JSON only."
     )
@@ -210,6 +218,8 @@ Seller goal:
 - Prefer clear specs, compatibility wording, package quantity, use cases, and buyer risk reduction.
 - If compatibility is involved, use "Compatible with" / "Replacement for" style wording and avoid official affiliation claims.
 - Deeply use competitor links as reference: infer keywords, product positioning, image module ideas, packaging angle, compatibility wording, and selling point structure from URL slugs, ASIN references, and seller notes.
+- If normalized SerpApi Amazon JSON is present, use it as the main public reference source. Raw links are only identifiers.
+- Treat competitor product facts as candidates only. Confirmed product facts and the seller's own product reference image override all competitor data.
 - For image prompts, the seller's own main product reference image controls product identity and appearance. Competitor links are only for module/storyboard inspiration.
 - If an image is attached, inspect the visible product shape, color, material, package quantity, proportions, holes/edges/surface details, and carry those constraints into every image prompt.
 - Every image prompt must be ready to paste into ChatGPT image generation together with the seller's product reference photo.
@@ -328,6 +338,7 @@ def create_listing_project(db: Session, payload: dict[str, Any], user_id: int | 
     project = ListingProject(
         user_id=user_id,
         project_name=_text(payload.get("project_name")) or _text(payload.get("product_name")) or "Untitled Listing Project",
+        project_type=_text(payload.get("project_type")) or "manual_input",
         marketplace=_text(payload.get("marketplace")) or "US",
         brand=_text(payload.get("brand")) or None,
         category=_text(payload.get("category")) or None,
@@ -367,6 +378,8 @@ def _ensure_draft(project: ListingProject) -> None:
 def update_listing_project(db: Session, project_id: int, payload: dict[str, Any], user_id: int | None = None) -> ListingProject:
     project = get_listing_project(db, project_id, user_id=user_id)
     _ensure_draft(project)
+    if "project_type" in payload:
+        project.project_type = _text(payload.get("project_type")) or project.project_type or "manual_input"
     for field in ["project_name", "marketplace", "brand", "category", "product_name", "fulfillment_method", "notes"]:
         if field in payload:
             value = _text(payload.get(field))
@@ -387,6 +400,7 @@ def copy_listing_project(db: Session, project_id: int, user_id: int | None = Non
     copy_project = ListingProject(
         user_id=user_id or project.user_id,
         project_name=f"{project.project_name} - 副本",
+        project_type=project.project_type or "manual_input",
         marketplace=project.marketplace,
         brand=project.brand,
         category=project.category,
@@ -416,6 +430,7 @@ def delete_listing_project(db: Session, project_id: int, user_id: int | None = N
         "competitors": 0,
         "listing_versions": 0,
         "image_prompt_versions": 0,
+        "listing_image_assets": 0,
         "aplus_versions": 0,
     }
     for model, key in [
@@ -423,6 +438,7 @@ def delete_listing_project(db: Session, project_id: int, user_id: int | None = N
         (CompetitorReference, "competitors"),
         (ListingVersion, "listing_versions"),
         (ImagePromptVersion, "image_prompt_versions"),
+        (ListingImageAsset, "listing_image_assets"),
         (AplusVersion, "aplus_versions"),
     ]:
         counts[key] = db.execute(select(func.count()).select_from(model).where(model.project_id == project_id)).scalar_one()
@@ -555,12 +571,28 @@ def generate_listing_versions(
     model: str | None = None,
     version_count: int = 1,
     product_reference_image: dict[str, Any] | None = None,
+    similar_product_references: list[dict[str, Any]] | None = None,
+    reference_insights: dict[str, Any] | None = None,
+    confirmed_product_facts: dict[str, Any] | None = None,
 ) -> list[ListingVersion]:
     project, inputs, competitors = _context(db, project_id, user_id=user_id)
-    selected_model = _text(model) or get_settings().openai_model
+    settings = get_settings()
+    selected_model = _text(model) or settings.openai_text_model or settings.openai_model
     count = _safe_count(version_count, default=1, max_value=10)
     try:
-        ai_data = _ai_listing_data(_build_ai_context(project, inputs, competitors, selected_model=selected_model, version_count=count, product_reference_image=product_reference_image))
+        ai_data = _ai_listing_data(
+            _build_ai_context(
+                project,
+                inputs,
+                competitors,
+                selected_model=selected_model,
+                version_count=count,
+                product_reference_image=product_reference_image,
+                similar_product_references=similar_product_references,
+                reference_insights=reference_insights,
+                confirmed_product_facts=confirmed_product_facts,
+            )
+        )
     except Exception:
         ai_data = None
     if ai_data and _as_list(ai_data.get("versions")):
@@ -615,9 +647,13 @@ def generate_image_prompts(
     model: str | None = None,
     version_count: int = 1,
     product_reference_image: dict[str, Any] | None = None,
+    similar_product_references: list[dict[str, Any]] | None = None,
+    reference_insights: dict[str, Any] | None = None,
+    confirmed_product_facts: dict[str, Any] | None = None,
 ) -> list[ImagePromptVersion]:
     project, inputs, competitors = _context(db, project_id, user_id=user_id)
-    selected_model = _text(model) or get_settings().openai_model
+    settings = get_settings()
+    selected_model = _text(model) or settings.openai_text_model or settings.openai_model
     image_set_count = _safe_count(version_count, default=1, max_value=5)
     count = image_set_count * len(IMAGE_TYPES)
     try:
@@ -628,6 +664,9 @@ def generate_image_prompts(
             selected_model=selected_model,
             version_count=count,
             product_reference_image=product_reference_image,
+            similar_product_references=similar_product_references,
+            reference_insights=reference_insights,
+            confirmed_product_facts=confirmed_product_facts,
         )
         context["image_set_count"] = image_set_count
         context["image_types_per_set"] = [name for name, _ in IMAGE_TYPES]
@@ -672,11 +711,27 @@ def generate_aplus_version(
     model: str | None = None,
     version_count: int = 1,
     product_reference_image: dict[str, Any] | None = None,
+    similar_product_references: list[dict[str, Any]] | None = None,
+    reference_insights: dict[str, Any] | None = None,
+    confirmed_product_facts: dict[str, Any] | None = None,
 ) -> AplusVersion:
     project, inputs, competitors = _context(db, project_id, user_id=user_id)
-    selected_model = _text(model) or get_settings().openai_model
+    settings = get_settings()
+    selected_model = _text(model) or settings.openai_text_model or settings.openai_model
     try:
-        ai_data = _ai_aplus_data(_build_ai_context(project, inputs, competitors, selected_model=selected_model, version_count=_safe_count(version_count, default=1, max_value=5), product_reference_image=product_reference_image))
+        ai_data = _ai_aplus_data(
+            _build_ai_context(
+                project,
+                inputs,
+                competitors,
+                selected_model=selected_model,
+                version_count=_safe_count(version_count, default=1, max_value=5),
+                product_reference_image=product_reference_image,
+                similar_product_references=similar_product_references,
+                reference_insights=reference_insights,
+                confirmed_product_facts=confirmed_product_facts,
+            )
+        )
     except Exception:
         ai_data = None
     if ai_data and isinstance(ai_data.get("aplus"), dict):
@@ -709,6 +764,7 @@ def serialize_project(item: ListingProject) -> dict[str, Any]:
         "id": item.id,
         "user_id": item.user_id,
         "project_name": item.project_name,
+        "project_type": item.project_type or "manual_input",
         "marketplace": item.marketplace,
         "brand": item.brand,
         "category": item.category,

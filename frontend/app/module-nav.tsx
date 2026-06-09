@@ -75,7 +75,7 @@ export default function ModuleNav() {
         {modules
           .filter((module) => user || ('public' in module && module.public))
           .map((module) => {
-          const active = module.items.some(([, href]) => pathname === href || pathname.startsWith(`${href}/`));
+          const active = module.items.some(([, href]) => pathname === href.replace(/\/$/, '') || pathname === href || pathname.startsWith(`${href.replace(/\/$/, '')}/`));
           return (
             <div className="group relative" key={module.label}>
               <Link
@@ -90,7 +90,7 @@ export default function ModuleNav() {
                 {module.items.map(([label, href]) => (
                   <Link
                     className={`block rounded px-3 py-2 text-sm ${
-                      pathname === href ? 'bg-blue-50 font-semibold text-blue-700' : 'text-slate-700 hover:bg-slate-50'
+                      pathname === href.replace(/\/$/, '') || pathname === href ? 'bg-blue-50 font-semibold text-blue-700' : 'text-slate-700 hover:bg-slate-50'
                     }`}
                     href={href}
                     key={href}

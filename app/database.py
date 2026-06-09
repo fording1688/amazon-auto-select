@@ -118,6 +118,7 @@ def migrate_reporting_columns() -> None:
         },
         "listing_projects": {
             "user_id": "int",
+            "project_type": "string",
         },
         "recommendations": {
             "user_id": "int",
@@ -158,7 +159,10 @@ def migrate_reporting_columns() -> None:
             for name, kind in columns.items():
                 if column_exists(conn, table, name):
                     continue
-                conn.execute(text(f"alter table {table} add column {name} {col_type(kind)}"))
+                if dialect == "postgresql":
+                    conn.execute(text(f"alter table {table} add column if not exists {name} {col_type(kind)}"))
+                else:
+                    conn.execute(text(f"alter table {table} add column {name} {col_type(kind)}"))
         if dialect == "postgresql" and table_exists(conn, "stores"):
             conn.execute(text("alter table stores drop constraint if exists stores_name_key"))
         if table_exists(conn, "import_batches"):

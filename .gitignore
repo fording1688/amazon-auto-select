@@ -1,4 +1,6 @@
 .env
+.env.local
+.env.*.local
 .venv/
 __pycache__/
 *.pyc
@@ -14,3 +16,4 @@ amazon_reports/failed/*
 !amazon_reports/inbox/.gitkeep
 !amazon_reports/imported/.gitkeep
 !amazon_reports/failed/.gitkeep
+fixed/

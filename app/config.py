@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     openrouter_http_referer: Optional[str] = None
     openrouter_app_name: str = "amazon-auto-select"
     amazon_api_provider: str = "mock"
+    serpapi_api_key: Optional[str] = None
     serpapi_key: Optional[str] = None
     rainforest_api_key: Optional[str] = None
     keepa_api_key: Optional[str] = None
@@ -17,6 +18,13 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./amazon_test.db"
     daily_run_hour: int = 8
     openai_model: str = "gpt-4o-mini"
+    openai_text_model: str = "gpt-4.1-mini"
+    openai_image_model: str = "gpt-image-2"
+    r2_access_key_id: Optional[str] = None
+    r2_secret_access_key: Optional[str] = None
+    r2_endpoint_url: Optional[str] = None
+    r2_bucket_name: Optional[str] = None
+    r2_public_base_url: Optional[str] = None
     amazon_ads_api_enabled: bool = False
     default_ad_test_cost: float = 15.0
     auth_secret_key: str = "change-me-local-dev-secret"

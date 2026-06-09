@@ -3,7 +3,7 @@ set -euo pipefail
 
 BACKEND_HOST="${BACKEND_HOST:-root@97.64.29.123}"
 BACKEND_DIR="${BACKEND_DIR:-/opt/amazon-auto-select-backend}"
-BACKEND_BRANCH="${BACKEND_BRANCH:-codex/dockerize-amazon-auto-select}"
+BACKEND_BRANCH="${BACKEND_BRANCH:-main}"
 IMAGE_NAME="${BACKEND_IMAGE_NAME:-amazon-auto-select-backend:latest}"
 CONTAINER_NAME="${BACKEND_CONTAINER_NAME:-amazon-auto-select-backend}"
 PORT_MAPPING="${BACKEND_PORT_MAPPING:-8005:8005}"
